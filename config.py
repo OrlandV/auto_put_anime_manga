@@ -1,4 +1,4 @@
-# COOKIE авторизации на World-Art.
+# COOKIE авторизации на World Art.
 COOKIES_WA = {'user_login': '', 'user_password': ''}
 
 # COOKIE авторизации на домашнем веб-сервере Apache-PHP.

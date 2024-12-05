@@ -2,12 +2,11 @@ import requests
 from time import sleep
 import re
 from datetime import time
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as et
 from PIL import Image
 from urllib.request import urlopen
 from config import *
 from input import *
-# from pprint import pprint
 
 WA = 'http://www.world-art.ru/'
 A = 'animation'
@@ -40,7 +39,7 @@ def points_codes(text: str) -> str:
 
 def search_anime_in_wa(search: str, form: str, year: int) -> str | None:
     """
-    Функция поиска страницы anime на World-Art.
+    Функция поиска страницы anime на World Art.
     :param search: Искомое наименование.
     :param form: Формат.
     :param year: Год.
@@ -94,9 +93,9 @@ def search_anime_in_wa(search: str, form: str, year: int) -> str | None:
 
 def search_manga_in_wa_anime_page(page: str) -> str | None:
     """
-    Функция поиска манги, связанной с anime на World-Art.
-    :param page: Страница anime на World-Art (HTML-код, возвращённый search_anime_in_wa).
-    :return: Страница манги на World-Art (HTML-код).
+    Функция поиска манги, связанной с anime на World Art.
+    :param page: Страница anime на World Art (HTML-код, возвращённый search_anime_in_wa).
+    :return: Страница манги на World Art (HTML-код).
     """
     pos = page.find('<b>Снято по манге</b>')
     if pos == -1:
@@ -110,8 +109,8 @@ def search_manga_in_wa_anime_page(page: str) -> str | None:
 
 def wa_manga_pages(page: str) -> list:
     """
-    Функция поиска продолжений манги на World-Art и формирования списка страниц.
-    :param page: Страница манги на World-Art (HTML-код, возвращённый search_manga_in_wa_anime_page).
+    Функция поиска продолжений манги на World Art и формирования списка страниц.
+    :param page: Страница манги на World Art (HTML-код, возвращённый search_manga_in_wa_anime_page).
     :return: Список страниц.
     """
     pos1 = page.find("<link rel='canonical' href='") + 75
@@ -144,20 +143,64 @@ def wa_manga_pages(page: str) -> list:
     return res
 
 
-def manga_in_ann(page: str) -> str:
+def manga_in_ann(page: str) -> str | bool:
     """
-    Страница манги в ANN по ID из World-Art.
-    :param page: Страница манги на World-Art (HTML-код).
-    :return: XML-страница манги на ANN.
+    Страница манги в ANN по ID из World Art.
+    :param page: Страница манги на World Art (HTML-код).
+    :return: XML-страница манги на ANN, если есть ссылка. Иначе False.
     """
     pos1 = page.find('<b>Сайты</b>')
     pos2 = page.find('</table>', pos1)
     url = f'{ANNE}{M}.php'
     pos1 = page.find(url, pos1, pos2) + 58
+    if pos1 == 57:
+        return False
     mid = int(page[pos1:page.find("' ", pos1, pos2)])
     sleep(1)
     # return requests.get(url, {'id': mid}, cookies=COOKIES_WA).text
     return requests.get(f'{CANNE}api.xml', {M: mid}).text
+
+
+def number_of_volumes_ann(ann_xml: str) -> int:
+    """
+    Функция поиска количества томов манги на ANN.
+    :param ann_xml: XML-страница манги на ANN.
+    :return: Количество томов манги.
+    """
+    # root = et.fromstring(ann_xml)
+    # for info in root[0].findall('info'):
+    #     if info.get('type') == 'Number of tankoubon':
+    #         return int(info.text)
+    pos = ann_xml.find('Number of tankoubon') + 21
+    return int(ann_xml[pos:ann_xml.find('<', pos)])
+
+
+def manga_in_wp(page: str) -> str | bool:
+    """
+    Страница манги в Wikipedia по ссылке из World Art.
+    :param page: Страница манги на World Art (HTML-код).
+    :return:
+    """
+    pos1 = page.find('<b>Вики</b>')
+    pos2 = page.find('</table>', pos1)
+    pos1 = page.find('https://en.wikipedia.org/', pos1, pos2)
+    if pos1 == -1:
+        return False
+    url = page[pos1:page.find('" ', pos1, pos2)]
+    sleep(1)
+    return requests.get(url).text
+
+
+def number_of_volumes_wp(page: str) -> int:
+    """
+    Функция поиска количества томов манги на Wikipedia.
+    :param page: Страница манги на Wikipedia (HTML-код).
+    :return: Количество томов манги.
+    """
+    pos = page.find('<th scope="row" class="infobox-label">Volumes</th><td class="infobox-data">') + 75
+    if pos == -1:
+        return 0
+    return int(page[pos:page.find('</td>', pos)])
 
 
 def put_in_db(url: str, data: dict) -> int:
@@ -202,8 +245,8 @@ def put_people(pid: int, type_people: str) -> int:
 def wa_authors_of_manga_id(page: str, oam: str) -> list:
     """
     Функция поиска ID соответствующих авторов манги из WA в БД.
-    :param page: World-Art страница (HTML-код).
-    :param oam: Orland-H страница (HTML-код).
+    :param page: World Art страница (HTML-код).
+    :param oam: Страница веб-приложения интерфейса БД (HTML-код).
     :return: Список ID авторов манги в БД.
     """
     pos1 = page.find('<b>Авторы</b>')
@@ -270,8 +313,8 @@ def put_publication(pid: int, name: str) -> int:
 def wa_publications_id(page: str, oam: str) -> list:
     """
     Функция поиска ID соответствующих изданий из WA в БД.
-    :param page: World-Art страница (HTML-код).
-    :param oam: Orland-H страница (HTML-код).
+    :param page: World Art страница (HTML-код).
+    :param oam: Страница веб-приложения интерфейса БД (HTML-код).
     :return: Список ID изданий в БД.
     """
     pos1 = page.find('<b>Сериализация</b>')
@@ -307,8 +350,8 @@ def wa_publications_id(page: str, oam: str) -> list:
 def wa_genres_id(wa_page: str, o_page: str) -> list:
     """
     Функция поиска ID соответствующих жанров из WA в БД.
-    :param wa_page: World-Art страница (HTML-код).
-    :param o_page: Orland-H страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
+    :param o_page: Страница веб-приложения интерфейса БД (HTML-код).
     :return: Список ID жанров в БД.
     """
     # wa_genres = re.findall(
@@ -340,7 +383,7 @@ def decode_name(name: str) -> str:
 def wa_name_orig(wa_page: str, am=0) -> str:
     """
     Функция извлечения оригинального наименования из WA.
-    :param wa_page: World-Art страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
     :param am: Переключатель: anime/манга (0/1).
     :return: Оригинальное наименование.
     """
@@ -351,14 +394,13 @@ def wa_name_orig(wa_page: str, am=0) -> str:
         pos1 = wa_page.find('Valign=top>', pos1) + 11
         pos2 = wa_page.find('</td>', pos1)
         return decode_name(wa_page[pos1:pos2])
-    else:
-        return wa_name_rus(wa_page)
+    return wa_name_rus(wa_page)
 
 
 def wa_name_rom(wa_page: str, am=0) -> str:
     """
     Функция извлечения наименования на ромадзи из WA.
-    :param wa_page: World-Art страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
     :param am: Переключатель: anime/манга (0/1).
     :return: Наименование на ромадзи.
     """
@@ -375,23 +417,22 @@ def wa_name_rom(wa_page: str, am=0) -> str:
 def wa_name_eng(wa_page: str, am=0) -> str:
     """
     Функция извлечения наименования на английском из WA.
-    :param wa_page: World-Art страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
     :param am: Переключатель: anime/манга (0/1).
     :return: Наименование на английском.
     """
     pos1 = wa_page.find(f'<b>Названи{'я' if am else 'е'} (англ.)</b>')
     if pos1 == -1:
         return ''
-    else:
-        pos1 = wa_page.find('Valign=top>', pos1) + 11
-        pos2 = wa_page.find('</td>', pos1)
-        return decode_name(wa_page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
+    pos1 = wa_page.find('Valign=top>', pos1) + 11
+    pos2 = wa_page.find('</td>', pos1)
+    return decode_name(wa_page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
 
 
 def wa_name_rus(wa_page: str) -> str:
     """
     Функция извлечения наименования на русском из WA.
-    :param wa_page: World-Art страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
     :return: Наименование на русском.
     """
     pos1 = wa_page.find('<font size=5>') + 13
@@ -409,28 +450,14 @@ def wa_manga_name_r(wa_name_r, *args) -> str:
     return wa_name[:wa_name.find(' (манга)')]
 
 
-def number_of_volumes(ann_xml: str) -> int:
-    """
-    Функция поиска количества томов манги на ANN.
-    :param ann_xml: XML-страница манги на ANN.
-    :return: Количество томов манги.
-    """
-    # root = ET.fromstring(ann_xml)
-    # for info in root[0].findall('info'):
-    #     if info.get('type') == 'Number of tankoubon':
-    #         return int(info.text)
-    pos = ann_xml.find('Number of tankoubon') + 21
-    return int(ann_xml[pos:ann_xml.find('<', pos)])
-
-
 def number_of_chapters(ann_page: str) -> int:
     pass
 
 
 def wa_date_of_premiere_manga(wa_page: str) -> str:
     """
-    Функция поиска даты премьеры (года выпуска) манги на World-Art.
-    :param wa_page: World-Art страница (HTML-код).
+    Функция поиска даты премьеры (года выпуска) манги на World Art.
+    :param wa_page: World Art страница (HTML-код).
     :return: Дата премьеры манги в формате гггг-мм-чч.
     """
     pos1 = wa_page.find('<b>Год выпуска</b>')
@@ -441,13 +468,15 @@ def wa_date_of_premiere_manga(wa_page: str) -> str:
 
 def extraction_manga_from_wa(wa_page: str) -> dict:
     """
-    Функция извлечения данных из страницы (HTML-кода) манги на World-Art. Недостающие данные ищутся на ANN.
+    Функция извлечения данных из страницы (HTML-кода) манги на World Art. Недостающие данные ищутся на ANN.
     :param wa_page: Страница (HTML-код), возвращённый функцией search_manga_in_wa_anime_page.
     :return: Словарь данных.
     """
-    ann_page = manga_in_ann(wa_page)
+    if ann_page := manga_in_ann(wa_page):
+        nv = number_of_volumes_ann(ann_page)
+    elif wp_page := manga_in_wp(wa_page):
+        nv = number_of_volumes_wp(wp_page)
     oam = requests.get(f'{OAM}frmAddManga.php', cookies=COOKIES_O).text
-    nv = number_of_volumes(ann_page)
     res = {
         'maaum[]': wa_authors_of_manga_id(wa_page, oam),
         'mapbc[]': wa_publications_id(wa_page, oam),
@@ -475,8 +504,8 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
 
 def wa_anime_pages(page: str) -> list:
     """
-    Функция поиска продолжений anime на World-Art и формирования списка страниц.
-    :param page: Страница anime на World-Art (HTML-код, возвращённый search_anime_in_wa).
+    Функция поиска продолжений anime на World Art и формирования списка страниц.
+    :param page: Страница anime на World Art (HTML-код, возвращённый search_anime_in_wa).
     :return: Список страниц.
     """
     pos1 = page.find("<link rel='canonical' href='") + 79
@@ -511,8 +540,8 @@ def wa_anime_pages(page: str) -> list:
 def wa_format_id(wa_page: str, o_page: str) -> int:
     """
     Функция поиска ID соответствующего формата из WA в БД.
-    :param wa_page: World-Art страница (HTML-код).
-    :param o_page: Orland-H страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
+    :param o_page: Страница веб-приложения интерфейса БД (HTML-код).
     :return: ID формата в БД.
     """
     pos1 = wa_page.find('<b>Тип</b>') + 63
@@ -534,8 +563,8 @@ def wa_format_id(wa_page: str, o_page: str) -> int:
 def wa_studios_id(wa_page: str, o_page: str) -> list:
     """
     Функция поиска ID соответствующих студий из WA в БД.
-    :param wa_page: World-Art страница (HTML-код).
-    :param o_page: Orland-H страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
+    :param o_page: Страница веб-приложения интерфейса БД (HTML-код).
     :return: Список ID студий в БД.
     """
     url = f'{WAA}{A}_full_production.php'
@@ -572,8 +601,8 @@ def wa_studios_id(wa_page: str, o_page: str) -> list:
 def wa_directors_id(wa_page: str, o_page: str) -> list:
     """
     Функция поиска ID соответствующих режиссёров из WA в БД.
-    :param wa_page: World-Art страница (HTML-код).
-    :param o_page: Orland-H страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
+    :param o_page: Страница веб-приложения интерфейса БД (HTML-код).
     :return: Список ID режиссёров в БД.
     """
     url = f'{WAA}{A}_full_cast.php'
@@ -625,7 +654,7 @@ def wa_directors_id(wa_page: str, o_page: str) -> list:
 def wa_number_of_episodes(wa_page: str) -> int:
     """
     Функция извлечения количества эпизодов из WA.
-    :param wa_page: World-Art страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
     :return: Количество эпизодов.
     """
     pos1 = wa_page.find('<b>Тип</b>')
@@ -640,7 +669,7 @@ def wa_number_of_episodes(wa_page: str) -> int:
 def wa_duration(wa_page: str):
     """
     Функция извлечения продолжительности эпизода из WA.
-    :param wa_page: World-Art страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
     :return: Продолжительность эпизода в формате чч:мм.
     """
     pos1 = wa_page.find('<b>Тип</b>')
@@ -661,7 +690,7 @@ def wa_duration(wa_page: str):
 def wa_date_of_premiere_anime(wa_page: str) -> str:
     """
     Функция извлечения даты премьеры из WA.
-    :param wa_page: World-Art страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
     :return: Дата премьеры в формате гггг-мм-дд.
     """
     pos = wa_page.find('<b>Выпуск</b>')
@@ -678,7 +707,7 @@ def wa_date_of_premiere_anime(wa_page: str) -> str:
 def wa_notes(wa_page: str) -> str:
     """
     Функция извлечения примечаний из WA.
-    :param wa_page: World-Art страница (HTML-код).
+    :param wa_page: World Art страница (HTML-код).
     :return: Примечания.
     """
     pos1 = wa_page.find('<b>Тип</b>')
@@ -695,7 +724,7 @@ def wa_notes(wa_page: str) -> str:
 
 def extraction_anime_from_wa(page: str, mid: int = 0) -> dict:
     """
-    Функция извлечения данных из страницы (HTML-кода) anime на World-Art.
+    Функция извлечения данных из страницы (HTML-кода) anime на World Art.
     :param page: Страница (HTML-код), возвращённый функцией search_anime_in_wa.
     :param mid: ID манги в БД. 0 — нет манги в БД.
     :return: Словарь данных.
@@ -731,9 +760,9 @@ def extraction_anime_from_wa(page: str, mid: int = 0) -> dict:
 
 def wa_ann_poster(wa_page: str, mid: int, name: str, am: int = 0) -> None:
     """
-    Функция поиска, загрузки и сохранения постера anime с сервера World-Art или ANN в виде миниатюрной картинки
-    для своей БД.
-    :param wa_page: World-Art страница (HTML-код).
+    Функция поиска, загрузки и сохранения постера anime с сервера World Art или ANN
+    в виде миниатюрной картинки для своей БД.
+    :param wa_page: World Art страница (HTML-код).
     :param mid: ID в БД (возвращённое put_in_db).
     :param name: Наименование.
     :param am: Переключатель: 0 — anime, 1 — manga.
@@ -761,7 +790,7 @@ def wa_ann_poster(wa_page: str, mid: int, name: str, am: int = 0) -> None:
         aid = int(wa_page[pos:wa_page.find("' ", pos)])
         ann = requests.get(f'{CANNE}api.xml',
                            {M if am else 'anime': aid}).text
-        root = ET.fromstring(ann)
+        root = et.fromstring(ann)
         url = root[0].find('info').attrib['src']
     img = Image.open(urlopen(url))
     img.thumbnail((100, 100))
