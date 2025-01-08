@@ -53,7 +53,7 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
         'genre[]': wa.genres_id(wa_page, oam),
         'amnor': wa.name_orig(wa_page, 1),
         'amnro': amnro,
-        'amnen': wa.name_eng(wa_page, 1),
+        'amnen': wa.name_eng(wa_page, 1) or ann.title(ann_page, 'eng'),
         'amnru': wa.manga_name_r(wa.name_rus, wa_page),
         'manvo': nv,
         'manch': nv,  # number_of_chapters(ann_page),
@@ -86,7 +86,7 @@ def extraction_anime_from_wa(page: str, mid: int = 0) -> dict:
         'genre[]': wa.genres_id(page, oam),
         'amnor': wa.name_orig(page),
         'amnro': wa.name_rom(page),
-        'amnen': wa.name_eng(page),
+        'amnen': wa.name_eng(page) or ann.title(wa.anime_in_ann(page), 'eng'),
         'amnru': wa.name_rus(page),
         'annep': wa.number_of_episodes(page),
         'andur': wa.duration(page),
@@ -273,8 +273,8 @@ if wa_anime_page := wa.search_anime(title, form, year):
             # if page == pages[0]:
             #     continue
             data = extraction_manga_from_wa(page)
-            mid = db.put(f'{OAM}frmAddManga.php', data)
-            wa_ann_poster(page, mid, data['amnro'], 1)
+            # mid = db.put(f'{OAM}frmAddManga.php', data)
+            # wa_ann_poster(page, mid, data['amnro'], 1)
     pages = wa.anime_pages(wa_anime_page)
     for page in pages:
         # if page == pages[0]:

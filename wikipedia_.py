@@ -55,7 +55,10 @@ def date_of_premiere_manga(wp_page: str, title: str) -> str | bool:
             pos2 = wp_page.find('</td>', pos1)
     else:
         return False
-    return date_parser.parse(wp_page[pos1:pos2]).strftime('%Y-%m-%d')
+    date = wp_page[pos1:pos2]
+    if len(date) == 4:
+        return date_parser.parse(date).strftime('%Y') + '-12-31'
+    return date_parser.parse(date).strftime('%Y-%m-%d')
 
 
 def put_publication(publication: dict) -> int:

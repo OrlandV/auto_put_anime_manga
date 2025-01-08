@@ -173,9 +173,12 @@ def put_people(pid: int, type_people: str) -> int:
     pos2 = page.find('</td>', pos1)
     data['narom'] = page[pos1:pos2]
     pos1 = page.find('<b>Оригинальное имя</b>', pos2)
-    pos1 = page.find("class='review'>", pos1) + 15
-    pos2 = page.find('</td>', pos1)
-    data['naori'] = decode_name(page[pos1:pos2])
+    if pos1 != -1:
+        pos1 = page.find("class='review'>", pos1) + 15
+        pos2 = page.find('</td>', pos1)
+        data['naori'] = decode_name(page[pos1:pos2])
+    else:
+        data['naori'] = data['narom']
     return db.put(f'{OAM}frmAdd{type_people}.php', data)
 
 
@@ -508,6 +511,23 @@ def directors_id(wa_page: str, o_page: str) -> list:
             if not wa_director['exist']:
                 result.append(put_people(wa_director['id'], 'Director'))
     return result
+
+
+def anime_in_ann(wa_page: str) -> str | bool:
+    """
+    Страница манги в ANN по ID из World Art.
+    :param wa_page: Страница манги на World Art (HTML-код).
+    :return: XML-страница манги на ANN, если есть ссылка, или False.
+    """
+    pos1 = wa_page.find('<b>Сайты</b>')
+    pos1 = wa_page.find('&nbsp;- <noindex>', pos1)
+    pos2 = wa_page.find('<table ', pos1)
+    pos1 = wa_page.find(f'{SANNE}anime.php', pos1, pos2) + 59
+    if pos1 == 57:
+        return False
+    aid = int(wa_page[pos1:wa_page.find("' ", pos1, pos2)])
+    sleep(1)
+    return requests.get(f'{CANNE}api.xml', {'anime': aid}).text
 
 
 def number_of_episodes(wa_page: str) -> int:
