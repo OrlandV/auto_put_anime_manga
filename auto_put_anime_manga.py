@@ -44,8 +44,11 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
             break
     if wp_page:
         date_of_premiere = wp.date_of_premiere_manga(wp_page, amnro)
-    elif not (date_of_premiere := wp.date_of_premiere_manga(wa.manga_in_wp(wa_page), amnro)):
-        date_of_premiere = wa.date_of_premiere_manga(wa_page) or '1900-01-01'
+        nd = True if date_of_premiere and date_of_premiere[5:] == '12-31' else False
+    else:
+        date_of_premiere = wp.date_of_premiere_manga(wa.manga_in_wp(wa_page), amnro)
+        if nd := (True if date_of_premiere and date_of_premiere[5:] == '12-31' else False):
+            date_of_premiere, nd = (wa.date_of_premiere_manga(wa_page), False) or ('1900-01-01', True)
     oam = requests.get(f'{OAM}frmAddManga.php', cookies=COOKIES_O).text
     res = {
         'maaum[]': wa.authors_of_manga_id(wa_page, oam),
@@ -58,7 +61,7 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
         'manvo': nv,
         'manch': nv,  # number_of_chapters(ann_page),
         'amdpr': date_of_premiere,
-        'notes': f'Нет инф-и о кол-ве{' томов,' if nnv else ''} глав и точной дате премьеры.'
+        'notes': f'Нет инф-и о кол-ве{' томов,' if nnv else ''} глав{' и точной дате премьеры' if nd else ''}.'
     }
     if res['amnru'] == res['amnro']:
         res['amnru'] = ''
@@ -128,8 +131,8 @@ def wa_ann_poster(wa_page: str, mid: int, name: str, am: int | bool = 0) -> None
     else:
         pos = wa_page.find("<tr><td align=left width=145 class='review' Valign=top><b>Сайты</b></td>" if am else
                            '<tr><td class=bg2>&nbsp;<b>Сайты</b></td></tr>')
-        pos = wa_page.find(ANN, pos) + (62 if am else 59)
-        if pos == 61 if am else 58:
+        pos = wa_page.find(ANN, pos) + (55 if am else 52)
+        if pos == (54 if am else 51):
             with open(f'{PATH}{'m' if am else 'a'}/report.log', 'a', encoding='utf8') as file:
                 file.write(f'{mid},"{name}","Нет постера."')
             return
@@ -273,8 +276,8 @@ if wa_anime_page := wa.search_anime(title, form, year):
             # if page == pages[0]:
             #     continue
             data = extraction_manga_from_wa(page)
-            # mid = db.put(f'{OAM}frmAddManga.php', data)
-            # wa_ann_poster(page, mid, data['amnro'], 1)
+            mid = db.put(f'{OAM}frmAddManga.php', data)
+            wa_ann_poster(page, mid, data['amnro'], 1)
     pages = wa.anime_pages(wa_anime_page)
     for page in pages:
         # if page == pages[0]:

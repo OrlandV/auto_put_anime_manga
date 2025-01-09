@@ -14,8 +14,8 @@ OAM = 'http://localhost/anime_manga/'
 IGNORED_GENRES = ('сёдзё', 'сэйнэн')
 
 # Игнорируемые жанры MangaUpdate.
-IGNORED_GENRES_MU = ('Action', 'Adult', 'Doujinshi', 'Josei', 'Mature', 'Seinen', 'Shoujo', 'Shounen Ai', 'Yaoi',
-                     'Yuri')
+IGNORED_GENRES_MU = ('Action', 'Adult', 'Doujinshi', 'Josei', 'Mature', 'Seinen', 'Shoujo', 'Shoujo Ai', 'Shounen Ai',
+                     'Yaoi', 'Yuri')
 
 # Жанры MangaUpdate.
 GENRES_MU = {

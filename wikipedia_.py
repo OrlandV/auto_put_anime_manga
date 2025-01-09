@@ -27,16 +27,21 @@ def date_of_premiere_manga(wp_page: str, title: str) -> str | bool:
     :return: Дата премьеры манги в формате гггг-мм-чч или False, если дата на странице не найдена.
     """
     title = normal_name(title)
-    pos = wp_page.find('<tbody><tr><td colspan="2" class="infobox-subheader" style="background:#CCF; font-size:125%; '
-                       'font-style:italic; font-weight:bold;">') + 131
-    pos2 = wp_page.find('</td></tr>', pos)
-    if normal_name(wp_page[pos:pos2]) != title:
-        while True:
-            pos = wp_page.find('class="infobox-header"', pos) + 22
-            pos = wp_page.find('<i>', pos) + 3
-            pos2 = wp_page.find('</i>', pos)
-            if normal_name(wp_page[pos:pos2]) == title:
-                break
+    pos = wp_page.find('(<span title="Japanese-language romanization"><i lang="ja-Latn">') + 64
+    pos2 = wp_page.find('</i></span>)', pos)
+    pos3 = wp_page.find('<tr><td colspan="2" class="infobox-subheader" style="background:#CCF; font-weight:bold;">',
+                        pos2) + 89
+    if normal_name(wp_page[pos:pos2]) != title and wp_page[pos3:pos3 + 5] != 'Manga':
+        pos = wp_page.find('<tbody><tr><td colspan="2" class="infobox-subheader" style="background:#CCF; '
+                           'font-size:125%; font-style:italic; font-weight:bold;">') + 131
+        pos2 = wp_page.find('</td></tr>', pos)
+        if normal_name(wp_page[pos:pos2]) != title:
+            while True:
+                pos = wp_page.find('class="infobox-header"', pos) + 22
+                pos = wp_page.find('<i>', pos) + 3
+                pos2 = wp_page.find('</i>', pos)
+                if normal_name(wp_page[pos:pos2]) == title:
+                    break
     posa = wp_page.find('<tr><th scope="row" class="infobox-label">Original run</th>'
                         '<td class="infobox-data"><span class="nowrap">', pos2) + 105
     posb = wp_page.find('<tr><th scope="row" class="infobox-label">Published</th>'
