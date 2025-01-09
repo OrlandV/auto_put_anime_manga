@@ -131,8 +131,8 @@ def wa_ann_poster(wa_page: str, mid: int, name: str, am: int | bool = 0) -> None
     else:
         pos = wa_page.find("<tr><td align=left width=145 class='review' Valign=top><b>Сайты</b></td>" if am else
                            '<tr><td class=bg2>&nbsp;<b>Сайты</b></td></tr>')
-        pos = wa_page.find(ANN, pos) + (55 if am else 52)
-        if pos == (54 if am else 51):
+        pos = wa_page.find(ANN, pos) + (54 if am else 51)
+        if pos == (53 if am else 50):
             with open(f'{PATH}{'m' if am else 'a'}/report.log', 'a', encoding='utf8') as file:
                 file.write(f'{mid},"{name}","Нет постера."')
             return
