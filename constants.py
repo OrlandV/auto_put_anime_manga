@@ -1,3 +1,6 @@
+from config import *
+
+OAMM = f'{OAM}frmAddManga.php'
 WA = 'http://www.world-art.ru/'
 A = 'animation'
 WAA = WA + A + '/'
@@ -11,3 +14,4 @@ SANNE = 'https://www.animenewsnetwork.com/encyclopedia/'
 AMU = 'https://api.mangaupdates.com/v1/'
 AMUS = AMU + 'series/'
 AMUA = AMU + 'authors/'
+WMU = 'http://www.mangaupdates.com/series.html'

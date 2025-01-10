@@ -7,10 +7,9 @@ import requests
 from PIL import Image
 from urllib.request import urlopen
 
-from config import *
+from constants import *
 import db
 from decode_name import normal_name
-from constants import *
 
 
 def genres_id(data: json.JSONEncoder, oam: str) -> list[int]:
@@ -52,13 +51,25 @@ def manga_json(mu_id: int) -> json.JSONEncoder:
     return requests.get(f'{AMUS}{mu_id}').json()
 
 
-def related_manga(title: str) -> list[dict]:
+def related_manga_id(mu_id: int) -> list[dict]:
+    """
+    Поиск по наименованию манги в MangaUpdates, извлечение ID связанной манги и пометка их для обработки.
+    :param mu_id: ID манги в MangaUpdates.
+    :return: Список словарей [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)].
+    """
+    data = manga_json(mu_id)
+    result = []
+    for rs in data['related_series']:
+        result.append({'id': rs['related_series_id'], 'name': rs['related_series_name'], 'add': True})
+    return result
+
+
+def related_manga_title(title: str) -> list[dict]:
     """
     Поиск по наименованию манги в MangaUpdates, извлечение ID связанной манги и пометка их для обработки.
     :param title: Наименование манги.
-    :return: Список словарей [dict('id'=mu_id: int, 'name'=name: str, 'add'=добавлять?: bool)].
+    :return: Список словарей [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)].
     """
-    result = []
     title = normal_name(title)
     sleep(1)
     data = requests.post(AMUS + 'search', {'search': title}).json()
@@ -67,11 +78,8 @@ def related_manga(title: str) -> list[dict]:
             mu_id = res['record']['series_id']
             break
     else:
-        return result
-    data = manga_json(mu_id)
-    for rs in data['related_series']:
-        result.append({'id': rs['related_series_id'], 'name': rs['related_series_name'], 'add': True})
-    return result
+        return []
+    return related_manga_id(mu_id)
 
 
 def authors_of_manga_id(mu_json: json.JSONEncoder, oam: str) -> list[int] | bool:

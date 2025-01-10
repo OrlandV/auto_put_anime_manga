@@ -8,7 +8,6 @@ from datetime import time
 
 from decode_name import points_codes
 from constants import *
-from config import *
 from decode_name import decode_name
 import db
 
@@ -142,7 +141,7 @@ def manga_in_wp(page: str) -> str | bool:
     """
     Страница манги в Wikipedia по ссылке из World Art.
     :param page: Страница манги на World Art (HTML-код).
-    :return:
+    :return: Страница манги в Wikipedia, если найдена ссылка. Иначе — False.
     """
     pos1 = page.find('<b>Вики</b>')
     pos2 = page.find('</table>', pos1)
@@ -356,6 +355,23 @@ def manga_name_r(wa_name_r, *args) -> str:
     return wa_name[:pos]
 
 
+def id_manga_in_mu(page: str) -> int | bool:
+    """
+    Поиск ID манги в MangaUpdates по ссылке из World Art.
+    :param page: Страница манги на World Art (HTML-код).
+    :return: ID манги в MangaUpdates, если найдена ссылка. Иначе — False.
+    """
+    pos = page.find(WMU) + 43
+    if pos == 42:
+        return False
+    pos2 = page.find("' ", pos)
+    sleep(1)
+    page = requests.get(WMU, {'id': page[pos:pos2]}).text
+    pos = page.find('"identifier":') + 13
+    pos2 = page.find(',', pos)
+    return int(page[pos:pos2])
+
+
 def date_of_premiere_manga(wa_page: str) -> str:
     """
     Поиск даты премьеры (года выпуска) манги на World Art.
@@ -515,9 +531,9 @@ def directors_id(wa_page: str, o_page: str) -> list:
 
 def anime_in_ann(wa_page: str) -> str | bool:
     """
-    Страница манги в ANN по ID из World Art.
-    :param wa_page: Страница манги на World Art (HTML-код).
-    :return: XML-страница манги на ANN, если есть ссылка, или False.
+    Страница anime в ANN по ID из World Art.
+    :param wa_page: Страница anime на World Art (HTML-код).
+    :return: XML-страница anime на ANN, если есть ссылка, или False.
     """
     pos1 = wa_page.find('<b>Сайты</b>')
     pos1 = wa_page.find('&nbsp;- <noindex>', pos1)

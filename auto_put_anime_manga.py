@@ -8,7 +8,6 @@ import wikipedia
 
 from input import *
 from constants import *
-from config import *
 import world_art as wa
 import animenewsnetwork as ann
 import wikipedia_ as wp
@@ -35,20 +34,28 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
     else:
         nv = 1
         nnv = True
-    # date_of_premiere = None
+    if not nv:
+        ann_page = ann.manga_from_anime(wa.anime_in_ann(wa_anime_page))
+        nv = ann.number_of_volumes(ann_page)
     amnro = wa.manga_name_r(wa.name_rom, wa_page, 1)
     amnro_ = dn.normal_name(amnro)
-    for mup in mu_pages:
-        if dn.normal_name(mup['name']) == amnro_:
-            mup['add'] = False  # Манга обработана и из MangaUpdates отдельно извлекать не нужно.
-            break
-    if wp_page:
-        date_of_premiere = wp.date_of_premiere_manga(wp_page, amnro)
-        nd = True if date_of_premiere and date_of_premiere[5:] == '12-31' else False
-    else:
-        date_of_premiere = wp.date_of_premiere_manga(wa.manga_in_wp(wa_page), amnro)
-        if nd := (True if date_of_premiere and date_of_premiere[5:] == '12-31' else False):
-            date_of_premiere, nd = (wa.date_of_premiere_manga(wa_page), False) or ('1900-01-01', True)
+    if not len(mu_pages):
+        mu_id = wa.id_manga_in_mu(wa_page)
+        if mu_id:
+            mu_pages = mu.related_manga_id(mu_id)
+    if len(mu_pages):
+        for mup in mu_pages:
+            if dn.normal_name(mup['name']) == amnro_:
+                mup['add'] = False  # Манга обработана и из MangaUpdates отдельно извлекать не нужно.
+                break
+    if not wp_page:
+        wp_page = wa.manga_in_wp(wa_page)
+    if not (date_of_premiere := wp.date_of_premiere_manga(wp_page, amnro)):
+        if not (date_of_premiere := ann.date_of_premiere_manga(ann_page)):
+            date_of_premiere = wa.date_of_premiere_manga(wa_page)
+    nd = True if date_of_premiere and date_of_premiere[5:] == '12-31' else False
+    if not date_of_premiere:
+        date_of_premiere = '1900-01-01'
     oam = requests.get(f'{OAM}frmAddManga.php', cookies=COOKIES_O).text
     res = {
         'maaum[]': wa.authors_of_manga_id(wa_page, oam),
@@ -266,7 +273,7 @@ def extraction_manga_from_mu(mu_json: json.JSONEncoder) -> dict:
     return res
 
 
-mu_pages = mu.related_manga(title)  # [dict('id'=mu_id: int, 'name'=name: str, 'add'=добавлять?: bool)]
+mu_pages = mu.related_manga_title(title)  # [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)]
 ann_pages = dict()  # {ann_id: обработана?}
 if wa_anime_page := wa.search_anime(title, form, year):
     mid = 0
@@ -276,7 +283,7 @@ if wa_anime_page := wa.search_anime(title, form, year):
             # if page == pages[0]:
             #     continue
             data = extraction_manga_from_wa(page)
-            mid = db.put(f'{OAM}frmAddManga.php', data)
+            mid = db.put(OAMM, data)
             wa_ann_poster(page, mid, data['amnro'], 1)
     pages = wa.anime_pages(wa_anime_page)
     for page in pages:
@@ -292,11 +299,11 @@ if wa_anime_page := wa.search_anime(title, form, year):
             data = extraction_manga_from_ann(page)
             # if ann_id in (21667, 27508):
             #     continue
-            mid = db.put(f'{OAM}frmAddManga.php', data)
+            mid = db.put(OAMM, data)
             ann.poster(page, mid, data['amnro'])
     for mup in mu_pages:
         if mup['add']:
             mu_json = mu.manga_json(mup['id'])
             data = extraction_manga_from_mu(mu_json)
-            mid = db.put(f'{OAM}frmAddManga.php', data)
+            mid = db.put(OAMM, data)
             mu.poster(mu_json, mid, data['amnro'])

@@ -38,6 +38,8 @@ def date_of_premiere_manga(wp_page: str, title: str) -> str | bool:
         if normal_name(wp_page[pos:pos2]) != title:
             while True:
                 pos = wp_page.find('class="infobox-header"', pos) + 22
+                if pos == 21:
+                    return False
                 pos = wp_page.find('<i>', pos) + 3
                 pos2 = wp_page.find('</i>', pos)
                 if normal_name(wp_page[pos:pos2]) == title:

@@ -11,7 +11,7 @@ PATH = ''
 OAM = 'http://localhost/anime_manga/'
 
 # Игнорируемые жанры.
-IGNORED_GENRES = ('сёдзё', 'сэйнэн')
+IGNORED_GENRES = ('дзёсэй', 'сёдзё', 'сэйнэн')
 
 # Игнорируемые жанры MangaUpdate.
 IGNORED_GENRES_MU = ('Action', 'Adult', 'Doujinshi', 'Josei', 'Mature', 'Seinen', 'Shoujo', 'Shoujo Ai', 'Shounen Ai',
