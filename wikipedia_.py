@@ -2,9 +2,45 @@
 Поиск страниц на Wikipedia и их обработка.
 """
 import dateutil.parser as date_parser
+import datetime
 
-import db
 from decode_name import normal_name
+import db
+
+
+def search_manga(title: str, wp_page: str) -> tuple[int, int] | bool:
+    """
+    Поиск манги в инфобоксе страницы в Wikipedia.
+    :param wp_page: Страница на Wikipedia (HTML-код).
+    :param title: Наименование манги.
+    :return: Кортеж позиций в HTML-коде.
+    """
+    cis = 'class="infobox-subheader"'
+    subheader = f'<tr><td colspan="2" {cis} style="background:#CCF; font-weight:bold;">'
+    header = '<tr><th colspan="2" class="infobox-header" style="background:#EEF; font-weight:normal;"><i>'
+    title = normal_name(title)
+    pos = wp_page.find('<p><i><b>') + 9
+    pose = wp_page.find('. ', pos)
+    nrn = normal_name(wp_page[pos:wp_page.find('</b></i>', pos, pose)])
+    pos = wp_page.find('<i lang="ja-Latn">', pos, pose) + 18
+    non = normal_name(wp_page[pos:wp_page.find('</i>', pos, pose)]) if pos != 17 else nrn
+    pos1 = wp_page.find(subheader) + 89
+    pose = wp_page.find('</tbody>', pos1)
+    pos2 = 0
+    while pos2 < pose:
+        pos2 = wp_page.find(subheader, pos1, pose)
+        if pos2 == -1:
+            pos2 = pose
+        if wp_page[pos1:pos1 + 5] == 'Manga':
+            if non == title:
+                return pos1, pos2
+            posa = wp_page.find(header, pos1, pos2) + 91
+            if posa != 90:
+                posb = wp_page.find('</i>', posa, pos2)
+                if normal_name(wp_page[posa:posb]) == title:
+                    return pos1, pos2
+        pos1 = pos2 + 89
+    return False
 
 
 def number_of_volumes(page: str) -> int:
@@ -26,28 +62,14 @@ def date_of_premiere_manga(wp_page: str, title: str) -> str | bool:
     :param title: Наименование манги.
     :return: Дата премьеры манги в формате гггг-мм-чч или False, если дата на странице не найдена.
     """
-    title = normal_name(title)
-    pos = wp_page.find('(<span title="Japanese-language romanization"><i lang="ja-Latn">') + 64
-    pos2 = wp_page.find('</i></span>)', pos)
-    pos3 = wp_page.find('<tr><td colspan="2" class="infobox-subheader" style="background:#CCF; font-weight:bold;">',
-                        pos2) + 89
-    if normal_name(wp_page[pos:pos2]) != title and wp_page[pos3:pos3 + 5] != 'Manga':
-        pos = wp_page.find('<tbody><tr><td colspan="2" class="infobox-subheader" style="background:#CCF; '
-                           'font-size:125%; font-style:italic; font-weight:bold;">') + 131
-        pos2 = wp_page.find('</td></tr>', pos)
-        if normal_name(wp_page[pos:pos2]) != title:
-            while True:
-                pos = wp_page.find('class="infobox-header"', pos) + 22
-                if pos == 21:
-                    return False
-                pos = wp_page.find('<i>', pos) + 3
-                pos2 = wp_page.find('</i>', pos)
-                if normal_name(wp_page[pos:pos2]) == title:
-                    break
+    if pp := search_manga(title, wp_page):
+        pos1, pos2 = pp
+    else:
+        return False
     posa = wp_page.find('<tr><th scope="row" class="infobox-label">Original run</th>'
-                        '<td class="infobox-data"><span class="nowrap">', pos2) + 105
+                        '<td class="infobox-data"><span class="nowrap">', pos1, pos2) + 105
     posb = wp_page.find('<tr><th scope="row" class="infobox-label">Published</th>'
-                        '<td class="infobox-data">', pos2) + 81
+                        '<td class="infobox-data">', pos1, pos2) + 81
     if posa == 104 and posb != 80:
         pos1 = posb
         pos2 = wp_page.find('</td>', pos1)
@@ -65,6 +87,12 @@ def date_of_premiere_manga(wp_page: str, title: str) -> str | bool:
     date = wp_page[pos1:pos2]
     if len(date) == 4:
         return date_parser.parse(date).strftime('%Y') + '-12-31'
+    date_ = date.split(' ')
+    if len(date_) == 2:
+        date = date_parser.parse(date)
+        date = datetime.date(date.year + (date.month == 12), (date.month + 1 if date.month < 12 else 1),
+                             1) - datetime.timedelta(1)
+        return date.strftime('%Y-%m-%d')
     return date_parser.parse(date).strftime('%Y-%m-%d')
 
 
@@ -85,7 +113,12 @@ def publications_id(title: str, wp_page: str, oam: str) -> list[int] | bool:
     :param oam: Страница веб-приложения интерфейса БД (HTML-код).
     :return: Список ID изданий в БД.
     """
-    def posa_posb(tag: str) -> tuple[int, int]:
+    def posa_posb(tag: str) -> list[tuple[int, int]]:
+        """
+        «Координаты» наименования изданий или издательств в HTML-коде.
+        :param tag: Тэг td или i.
+        :return: Список кортежей «координат».
+        """
         posb = wp_page.find('</td>', posa, pos2)
         pos = wp_page.find('<a ', posa, posb)
         if pos != -1:
@@ -97,38 +130,38 @@ def publications_id(title: str, wp_page: str, oam: str) -> list[int] | bool:
             else:
                 posa_ = wp_page.find(f'<{tag}>', posa, pos2) + len(tag) + 2
             posb = wp_page.find(f'</{tag}>', posa_, pos2)
-        return posa_, posb
+        posu = wp_page.find('<ul>', posa_, posb)
+        if posu != -1:
+            res = []
+            posu2 = wp_page.find('</ul>', posu, posb)
+            posl1 = posu
+            i = 0
+            while posl1 < posu2:
+                i += 1
+                posl1 = wp_page.find('<li>', posl1, posb) + 4
+                posl2 = wp_page.find('</li>', posl1, posb)
+                if i % 2 != 0:
+                    res.append((posl1, posl2))
+                posl1 = posl2 + 5
+            return res
+        return [(posa_, posb)]
 
-    title = normal_name(title)
-    cis = 'class="infobox-subheader"'
-    cism = f'{cis} style="background:#CCF; font-weight:bold;">Manga</td></tr>'
-    pos1 = wp_page.find(cism) + 25
-    pose = wp_page.find('</tbody>', pos1)
-    pos2 = 0
-    while pos2 < pose:
-        pos2 = wp_page.find(cis, pos1, pose)
-        if pos2 == -1:
-            pos2 = pose
-        posa = wp_page.find('<tr><th colspan="2" class="infobox-header" style="background:#EEF; font-weight:normal;">'
-                            '<i>', pos1, pos2) + 91
-        if posa != 90:
-            posb = wp_page.find('</i>', posa, pos2)
-            if normal_name(wp_page[posa:posb]) == title:
-                break
-        pos1 = pos2 + 25
+    if pp := search_manga(title, wp_page):
+        pos1, pos2 = pp
     else:
         return False
     posa = wp_page.find('class="infobox-label">Published&#160;by</th>', pos1, pos2) + 44
-    posa, posb = posa_posb('td')
+    posa, posb = posa_posb('td')[0]
     publishing = wp_page[posa:posb]
     posa = wp_page.find('class="infobox-label">Magazine</th>', pos1, pos2) + 35
+    publications = []
     if posa != 34:
-        type_ = 1
-        posa, posb = posa_posb('i')
+        for pp in posa_posb('i'):
+            posa, posb = pp
+            publications.append({'name': wp_page[posa:posb], 'publishing': publishing, 'type': 1, 'exist': False})
     else:
-        type_ = 2
         posa = wp_page.find('class="infobox-label">Imprint</th>', pos1, pos2)
         posa = wp_page.find('<td class="infobox-data">', posa, pos2) + 25
         posb = wp_page.find('</td>', posa, pos2)
-    return db.publications_id(oam, [{'name': wp_page[posa:posb], 'exist': False, 'publishing': publishing,
-                                     'type': type_}], put_publication)
+        publications.append({'name': wp_page[posa:posb], 'publishing': publishing, 'type': 2, 'exist': False})
+    return db.publications_id(oam, publications, put_publication)

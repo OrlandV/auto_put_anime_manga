@@ -17,6 +17,12 @@ IGNORED_GENRES = ('дзёсэй', 'сёдзё', 'сэйнэн')
 IGNORED_GENRES_MU = ('Action', 'Adult', 'Doujinshi', 'Josei', 'Mature', 'Seinen', 'Shoujo', 'Shoujo Ai', 'Shounen Ai',
                      'Yaoi', 'Yuri')
 
+# Жанры AnimeNewsNetwork.
+GENRES_ANN = {
+    'horror': 'ужасы',
+    'romance': 'романтика'
+}
+
 # Жанры MangaUpdate.
 GENRES_MU = {
     'Adventure': 'приключения',

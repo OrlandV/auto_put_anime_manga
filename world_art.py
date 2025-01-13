@@ -137,22 +137,22 @@ def manga_in_ann(page: str, ann_pages: dict) -> tuple[str | bool, dict]:
     return requests.get(f'{CANNE}api.xml', {M: mid}).text, ann_pages
 
 
-def manga_in_wp(page: str) -> str | bool:
-    """
-    Страница манги в Wikipedia по ссылке из World Art.
-    :param page: Страница манги на World Art (HTML-код).
-    :return: Страница манги в Wikipedia, если найдена ссылка. Иначе — False.
-    """
-    pos1 = page.find('<b>Вики</b>')
-    pos2 = page.find('</table>', pos1)
-    pos = page.find('https://en.wikipedia.org/', pos1, pos2)
-    if pos == -1:
-        pos = page.find('http://en.wikipedia.org/', pos1, pos2)
-        if pos == -1:
-            return False
-    url = page[pos:page.find('" ', pos, pos2)]
-    sleep(1)
-    return requests.get(url).text
+# def manga_in_wp(page: str) -> str | bool:
+#     """
+#     Страница манги в Wikipedia по ссылке из World Art.
+#     :param page: Страница манги на World Art (HTML-код).
+#     :return: Страница манги в Wikipedia, если найдена ссылка. Иначе — False.
+#     """
+#     pos1 = page.find('<b>Вики</b>')
+#     pos2 = page.find('</table>', pos1)
+#     pos = page.find('https://en.wikipedia.org/', pos1, pos2)
+#     if pos == -1:
+#         pos = page.find('http://en.wikipedia.org/', pos1, pos2)
+#         if pos == -1:
+#             return False
+#     url = page[pos:page.find('" ', pos, pos2)]
+#     sleep(1)
+#     return requests.get(url).text
 
 
 def put_people(pid: int, type_people: str) -> int:
@@ -302,7 +302,9 @@ def name_orig(wa_page: str, am: int | bool = 0) -> str:
     """
     pos1 = wa_page.find(f'<b>Названи{'я' if am else 'е'} (кандзи)</b>')
     if pos1 == -1:
-        pos1 = wa_page.find(f'<b>Названия (прочие)</b>')
+        pos1 = wa_page.find('<b>Названия (прочие)</b>')
+        if pos1 == -1:
+            pos1 = wa_page.find('<b>Названия (яп.)</b>')
     if pos1 != -1:
         pos1 = wa_page.find('Valign=top>', pos1) + 11
         pos2 = wa_page.find('</td>', pos1)
@@ -617,11 +619,11 @@ def notes(wa_page: str) -> str:
 
 
 # === Manga ===
-def search_publication_or_publishing(name: str) -> str:
+def search_publication_or_publishing(name: str) -> str | None:
     """
     Поиск страницы издания или издательства по наименованию в WA.
     :param name: Наименование издания или издательства.
-    :return: Искомая страница (HTML-код).
+    :return: Искомая страница (HTML-код) или None.
     """
     search = points_codes(name)
     sleep(1)
@@ -654,7 +656,10 @@ def search_publication_or_publishing(name: str) -> str:
             if wb:
                 break
     if pid == 0:
-        pid = int(data[posa:data.find('" ', posa)])
+        try:
+            pid = int(data[posa:data.find('" ', posa)])
+        except ValueError:
+            return None
     sleep(1)
     return requests.get(f'{WA}company.php', {'id': pid}, cookies=COOKIES_WA).text
 

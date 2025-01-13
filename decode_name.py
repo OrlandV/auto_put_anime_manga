@@ -19,13 +19,13 @@ def normal_name(name: str) -> str:
     :param name: Наименование.
     :return: Нормализованное наименование.
     """
-    name = name.lower().replace('ō', 'ou').replace('ū', 'uu')
+    name = name.lower().replace('ō', 'ou').replace('ū', 'uu').replace('×', 'x')
     chars = 'abcdefghijklmnopqrstuvwxyz 0123456789'
     name2 = ''
     for i in range(len(name)):
         if name[i] in chars:
             name2 += name[i]
-    return name2
+    return re.sub(r'\s+', ' ', name2)
 
 
 def points_codes(text: str) -> str:

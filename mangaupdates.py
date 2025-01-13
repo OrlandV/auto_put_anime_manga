@@ -53,7 +53,7 @@ def manga_json(mu_id: int) -> json.JSONEncoder:
 
 def related_manga_id(mu_id: int) -> list[dict]:
     """
-    Поиск по наименованию манги в MangaUpdates, извлечение ID связанной манги и пометка их для обработки.
+    Поиск по ID манги в MangaUpdates, извлечение ID связанной манги и пометка их для обработки.
     :param mu_id: ID манги в MangaUpdates.
     :return: Список словарей [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)].
     """
@@ -150,8 +150,6 @@ def select_title(mu_json: json.JSONEncoder, lang: str) -> str:
     for i, title in enumerate(mu_json['associated']):
         titles.append(title['title'])
         text += f'\n{i + 1}. {title['title']}'
-    # if len(titles) == 1:
-    #     return titles[0]
     print(f'Выберите {lang} наименование манги «{mu_json['title']}»:{text}')
     while True:
         num = input('Укажите номер: ')
@@ -168,9 +166,13 @@ def volumes(mu_json: json.JSONEncoder) -> int:
     """
     Количество томов.
     :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
-    :return: Количество томов.
+    :return: Количество томов или количество глав (отрицательное число).
     """
-    return mu_json['status'][:mu_json['status'].find(' ')]
+    p = mu_json['status'].find(' ')
+    n = int(mu_json['status'][:p])
+    if mu_json['status'][p + 1:p + 2] == 'V':
+        return n
+    return -n
 
 
 def poster(mu_json: json.JSONEncoder, mid: int, name: str) -> None:

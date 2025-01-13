@@ -5,6 +5,7 @@ from PIL import Image
 from urllib.request import urlopen
 import json
 import wikipedia
+from wikipedia.exceptions import PageError as WPPageError
 
 from input import *
 from constants import *
@@ -26,10 +27,12 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
     nnv = False  # Флаг добавления в примечания томов.
     wp_page = None
     ann_page, ann_pages = wa.manga_in_ann(wa_page, ann_pages)
+    amnro = wa.manga_name_r(wa.name_rom, wa_page, 1)
+    amnro_ = dn.normal_name(amnro)
     if ann_page:
         nv = ann.number_of_volumes(ann_page)
         ann_pages = ann.manga_pages(ann_page, ann_pages)
-    elif wp_page := wa.manga_in_wp(wa_page):
+    elif wp_page := wikipedia.page(amnro_).html():  # wa.manga_in_wp(wa_page)
         nv = wp.number_of_volumes(wp_page)
     else:
         nv = 1
@@ -37,8 +40,6 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
     if not nv:
         ann_page = ann.manga_from_anime(wa.anime_in_ann(wa_anime_page))
         nv = ann.number_of_volumes(ann_page)
-    amnro = wa.manga_name_r(wa.name_rom, wa_page, 1)
-    amnro_ = dn.normal_name(amnro)
     if not len(mu_pages):
         mu_id = wa.id_manga_in_mu(wa_page)
         if mu_id:
@@ -49,7 +50,7 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
                 mup['add'] = False  # Манга обработана и из MangaUpdates отдельно извлекать не нужно.
                 break
     if not wp_page:
-        wp_page = wa.manga_in_wp(wa_page)
+        wp_page = wikipedia.page(amnro_).html()  # wa.manga_in_wp(wa_page)
     if not (date_of_premiere := wp.date_of_premiere_manga(wp_page, amnro)):
         if not (date_of_premiere := ann.date_of_premiere_manga(ann_page)):
             date_of_premiere = wa.date_of_premiere_manga(wa_page)
@@ -72,6 +73,8 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
     }
     if res['amnru'] == res['amnro']:
         res['amnru'] = ''
+    if res['amnen'] == '' and res['amnor'] == res['amnro']:
+        res['amnen'] = res['amnro']
     dk = []
     for k, v in res.items():
         if not isinstance(v, int) and len(v) == 0:
@@ -105,6 +108,10 @@ def extraction_anime_from_wa(page: str, mid: int = 0) -> dict:
     }
     if res['amnru'] == res['amnro']:
         res['amnru'] = ''
+    if res['amnor'] == res['amnru'] and res['amnro'] != '':
+        res['amnor'] = res['amnro']
+    if res['amnen'] == '' and res['amnor'] == res['amnro']:
+        res['amnen'] = res['amnro']
     dk = []
     for k, v in res.items():
         if not isinstance(v, int) and len(v) == 0:
@@ -152,25 +159,25 @@ def wa_ann_poster(wa_page: str, mid: int, name: str, am: int | bool = 0) -> None
     img.save(f'{PATH}{'m' if am else 'a'}/{mid}.jpg')
 
 
-def search_manga_in_mu(ann_xml: str) -> json.JSONEncoder:
+def search_manga_in_mu(ann_xml: str) -> json.JSONEncoder | None:
     """
     Поиск страницы манги на MangaUpdates.
     :param ann_xml: XML-страница ANN.
-    :return: Данные по манге с MangaUpdates в JSON-формате.
+    :return: Данные по манге с MangaUpdates в JSON-формате. None, если манги нет.
     """
     global mu_pages
-    pos1 = ann_xml.find('type="Main title" lang="JA"') + 28
+    pos1 = ann_xml.find('type="Main title" lang="') + 28
     pos2 = ann_xml.find('</info>', pos1)
     search = dn.normal_name(ann_xml[pos1:pos2])
     for mup in mu_pages:
         if dn.normal_name(mup['name']) == search:
             mup['add'] = False
             return mu.manga_json(mup['id'])
-    # data = requests.post(AMUS + 'search', {'search': search}).json()
-    # for res in data['results']:
-    #     title = dn.normal_name(res['hit_title'])
-    #     if search == title:
-    #         return res['record']
+    data = requests.post(AMUS + 'search', {'search': search}).json()
+    for res in data['results']:
+        if dn.normal_name(res['hit_title']) == search:
+            mu_pages.append({'id': res['record']['series_id'], 'name': res['hit_title'], 'add': False})
+            return mu.manga_json(res['record']['series_id'])
 
 
 def put_publication_ann(publication: dict) -> int:
@@ -179,9 +186,9 @@ def put_publication_ann(publication: dict) -> int:
     :param publication: Издание.
     :return: ID издания в БД.
     """
-    publishing = (wa.extraction_publishing(wa.search_publication_or_publishing(publication['name'])) or
-                  ann.search_publishing(ann_id))
-    return db.put_publication({'name': publication['name'], 'type': 1, 'publishing': publishing})
+    pp = wa.search_publication_or_publishing(publication['name'])
+    publishing = ann.search_publishing(ann_id) if not pp else wa.extraction_publishing(pp)
+    return db.put_publication({'name': publication['name'], 'type': publication['type'], 'publishing': publishing})
 
 
 def extraction_manga_from_ann(ann_xml: str) -> dict:
@@ -190,24 +197,37 @@ def extraction_manga_from_ann(ann_xml: str) -> dict:
     :param ann_xml: XML-страница.
     :return: Словарь данных.
     """
-    mu_json = search_manga_in_mu(ann_xml)
+    if not (mu_json := search_manga_in_mu(ann_xml)):
+        amnro = ann.title(ann_xml, 'rom')
+    else:
+        amnro = mu_json['title']
     oam = requests.get(f'{OAM}frmAddManga.php', cookies=COOKIES_O).text
     sleep(1)
-    wp_page = wikipedia.page(mu_json['title']).html()
-    # with open('wp_page.html', 'w', encoding='utf8') as file:
-    #     file.write(wp_page)
-    # with open('wp_page.html', 'r', encoding='utf8') as file:
-    #     wp_page = file.read()
+    try:
+        wp_page = wikipedia.page(amnro).html()
+    except WPPageError:
+        wp_page = wikipedia.page(title).html()
     date_of_premiere = None
-    publications_id = wp.publications_id(mu_json['title'], wp_page, oam)
+    publications_id = None
+    if mu_json:
+        publications_id = mu.publications_id(mu_json, oam)
     if not publications_id:
-        (publications_id, date_of_premiere), nd = ann.publications_id_and_date_of_premiere(ann_xml, oam,
-                                                                                           put_publication_ann), False
+        publications_id = wp.publications_id(amnro, wp_page, oam)
+        if not publications_id:
+            (publications_id, date_of_premiere), nd = ann.publications_id_and_date_of_premiere(
+                ann_xml, oam, put_publication_ann
+            ), False
+    genres = ann.genres_id(ann_xml, oam) if not mu_json else mu.genres_id(mu_json, oam)
+    if not len(genres):
+        genres = db.select_genres(oam, amnro)
     if not date_of_premiere:
-        date_of_premiere, nd = (wp.date_of_premiere_manga(wp_page, mu_json['title']), False) or ('1900-01-01', True)
+        date_of_premiere = wp.date_of_premiere_manga(wp_page, amnro)
+    nd = True if date_of_premiere and date_of_premiere[5:] == '12-31' else False
+    if not date_of_premiere:
+        date_of_premiere = '1900-01-01'
     amnen = ann.title(ann_xml, 'eng') or mu.select_title(mu_json, 'eng')
     nnv = True
-    nv = ann.number_of_volumes(ann_xml) or mu.volumes(mu_json)
+    nv = ann.number_of_volumes(ann_xml) or (0 if not mu_json else mu.volumes(mu_json))
     if nv:
         nnv = False
     else:
@@ -215,9 +235,9 @@ def extraction_manga_from_ann(ann_xml: str) -> dict:
     res = {
         'maaum[]': ann.authors_of_manga_id(ann_xml, oam),
         'mapbc[]': publications_id,
-        'genre[]': mu.genres_id(mu_json, oam),  # ann.genres_id(ann_xml, oam),
+        'genre[]': genres,
         'amnor': ann.title(ann_xml, 'orig'),
-        'amnro': mu_json['title'],
+        'amnro': amnro,
         'amnen': amnen,
         # 'amnru': ann.title(ann_xml, 'rus'),
         'manvo': nv,
@@ -245,7 +265,14 @@ def extraction_manga_from_mu(mu_json: json.JSONEncoder) -> dict:
     :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
     :return: Словарь данных.
     """
+    nnc = None
     nv = mu.volumes(mu_json)
+    if nv < 0:
+        nc = -nv
+        nv = 1
+    else:
+        nc = nv
+        nnc = True
     oam = requests.get(f'{OAM}frmAddManga.php', cookies=COOKIES_O).text
     genres = mu.genres_id(mu_json, oam)
     if not len(genres):
@@ -258,9 +285,9 @@ def extraction_manga_from_mu(mu_json: json.JSONEncoder) -> dict:
         'amnro': mu_json['title'],
         'amnen': mu.select_title(mu_json, 'eng'),
         'manvo': nv,
-        'manch': nv,
+        'manch': nc,
         'amdpr': mu_json['year'] + '-12-31',
-        'notes': f'Нет инф-и о кол-ве глав и точной дате премьеры.'
+        'notes': f'Нет инф-и о{' кол-ве глав и' if nnc else ''} точной дате премьеры.'
     }
     if not res['amnor']:
         res['amnor'] = res['amnro']
@@ -297,7 +324,7 @@ if wa_anime_page := wa.search_anime(title, form, year):
             sleep(1)
             page = requests.get(f'{CANNE}api.xml', {M: ann_id}).text
             data = extraction_manga_from_ann(page)
-            # if ann_id in (21667, 27508):
+            # if ann_id in (,):
             #     continue
             mid = db.put(OAMM, data)
             ann.poster(page, mid, data['amnro'])
