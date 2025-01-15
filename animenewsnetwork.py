@@ -2,9 +2,10 @@
 Поиск страниц на AnimeNewsNetwork и их обработка.
 """
 import xml.etree.ElementTree as et
+import dateutil.parser as date_parser
+import datetime
 from time import sleep
 import requests
-import dateutil.parser as date_parser
 from PIL import Image
 from urllib.request import urlopen
 
@@ -35,11 +36,17 @@ def date_of_premiere_manga(ann_xml: str) -> str | bool:
     :return: Дата премьеры или False.
     """
     pos1 = ann_xml.find('type="Vintage"') + 15
-    date_of_premiere = ann_xml[pos1:pos1 + 10]
-    dp = date_parser.parse(date_of_premiere).strftime('%Y-%m-%d')
-    if dp != date_of_premiere:
-        return False
-    return date_of_premiere
+    if ann_xml[pos1 + 7:pos1 + 10] == '</i':
+        date = date_parser.parse(ann_xml[pos1:pos1 + 7])
+        date = datetime.date(date.year + (date.month == 12), (date.month + 1 if date.month < 12 else 1),
+                             1) - datetime.timedelta(1)
+        return date.strftime('%Y-%m-%d')
+    else:
+        date = ann_xml[pos1:pos1 + 10]
+        dp = date_parser.parse(date).strftime('%Y-%m-%d')
+        if dp != date:
+            return False
+        return date
 
 
 def manga_pages(ann_page: str, ann_pages: dict) -> dict:

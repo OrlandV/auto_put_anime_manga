@@ -43,7 +43,8 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
     if not len(mu_pages):
         mu_id = wa.id_manga_in_mu(wa_page)
         if mu_id:
-            mu_pages = mu.related_manga_id(mu_id)
+            mu_json = mu.manga_json(mu_id)
+            mu_pages = mu.related_manga(mu_json)
     if len(mu_pages):
         for mup in mu_pages:
             if dn.normal_name(mup['name']) == amnro_:
@@ -51,12 +52,19 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
                 break
     if not wp_page:
         wp_page = wikipedia.page(amnro_).html()  # wa.manga_in_wp(wa_page)
-    if not (date_of_premiere := wp.date_of_premiere_manga(wp_page, amnro)):
+    amnen = wa.name_eng(wa_page, 1) or ann.title(ann_page, 'eng')
+    if not (date_of_premiere := wp.date_of_premiere_manga(wp_page, amnro, amnen)):
         if not (date_of_premiere := ann.date_of_premiere_manga(ann_page)):
             date_of_premiere = wa.date_of_premiere_manga(wa_page)
-    nd = True if date_of_premiere and date_of_premiere[5:] == '12-31' else False
+    if date_of_premiere[5:] == '12-31':
+        date_of_premiere = ann.date_of_premiere_manga(ann_page)
+    nd = True if date_of_premiere and (date_of_premiere[8:9] == '3' or date_of_premiere[5:] == '02-28' or
+                                       date_of_premiere[5:] == '02-29') else False
     if not date_of_premiere:
         date_of_premiere = '1900-01-01'
+    amnru = wa.manga_name_r(wa.name_rus, wa_page)
+    if amnru == amnro and mu_json:
+        amnru = mu.select_title(mu_json, 'rus')
     oam = requests.get(f'{OAM}frmAddManga.php', cookies=COOKIES_O).text
     res = {
         'maaum[]': wa.authors_of_manga_id(wa_page, oam),
@@ -64,8 +72,8 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
         'genre[]': wa.genres_id(wa_page, oam),
         'amnor': wa.name_orig(wa_page, 1),
         'amnro': amnro,
-        'amnen': wa.name_eng(wa_page, 1) or ann.title(ann_page, 'eng'),
-        'amnru': wa.manga_name_r(wa.name_rus, wa_page),
+        'amnen': amnen,
+        'amnru': amnru,
         'manvo': nv,
         'manch': nv,  # number_of_chapters(ann_page),
         'amdpr': date_of_premiere,
@@ -284,6 +292,7 @@ def extraction_manga_from_mu(mu_json: json.JSONEncoder) -> dict:
         'amnor': mu.select_title(mu_json, 'orig'),
         'amnro': mu_json['title'],
         'amnen': mu.select_title(mu_json, 'eng'),
+        'amnru': mu.select_title(mu_json, 'rus'),
         'manvo': nv,
         'manch': nc,
         'amdpr': mu_json['year'] + '-12-31',

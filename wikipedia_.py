@@ -8,22 +8,22 @@ from decode_name import normal_name
 import db
 
 
-def search_manga(title: str, wp_page: str) -> tuple[int, int] | bool:
+def search_manga(title_rom: str, title_eng: str, wp_page: str) -> tuple[int, int] | bool:
     """
     Поиск манги в инфобоксе страницы в Wikipedia.
     :param wp_page: Страница на Wikipedia (HTML-код).
-    :param title: Наименование манги.
+    :param title_rom: Ромадзи наименование манги.
+    :param title_eng: Английское наименование манги.
     :return: Кортеж позиций в HTML-коде.
     """
     cis = 'class="infobox-subheader"'
     subheader = f'<tr><td colspan="2" {cis} style="background:#CCF; font-weight:bold;">'
     header = '<tr><th colspan="2" class="infobox-header" style="background:#EEF; font-weight:normal;"><i>'
-    title = normal_name(title)
+    title_rom = normal_name(title_rom)
+    title_eng = normal_name(title_eng)
     pos = wp_page.find('<p><i><b>') + 9
     pose = wp_page.find('. ', pos)
-    nrn = normal_name(wp_page[pos:wp_page.find('</b></i>', pos, pose)])
-    pos = wp_page.find('<i lang="ja-Latn">', pos, pose) + 18
-    non = normal_name(wp_page[pos:wp_page.find('</i>', pos, pose)]) if pos != 17 else nrn
+    nen = normal_name(wp_page[pos:wp_page.find('</b></i>', pos, pose)])
     pos1 = wp_page.find(subheader) + 89
     pose = wp_page.find('</tbody>', pos1)
     pos2 = 0
@@ -32,12 +32,12 @@ def search_manga(title: str, wp_page: str) -> tuple[int, int] | bool:
         if pos2 == -1:
             pos2 = pose
         if wp_page[pos1:pos1 + 5] == 'Manga':
-            if non == title:
+            if nen == title_eng:
                 return pos1, pos2
             posa = wp_page.find(header, pos1, pos2) + 91
             if posa != 90:
                 posb = wp_page.find('</i>', posa, pos2)
-                if normal_name(wp_page[posa:posb]) == title:
+                if normal_name(wp_page[posa:posb]) == title_rom:
                     return pos1, pos2
         pos1 = pos2 + 89
     return False
@@ -55,14 +55,15 @@ def number_of_volumes(page: str) -> int:
     return int(page[pos:page.find('</td>', pos)])
 
 
-def date_of_premiere_manga(wp_page: str, title: str) -> str | bool:
+def date_of_premiere_manga(wp_page: str, title_rom: str, title_eng: str) -> str | bool:
     """
     Поиск даты премьеры (года выпуска) манги на Wikipedia.
     :param wp_page: Страница на Wikipedia (HTML-код).
-    :param title: Наименование манги.
+    :param title_rom: Ромадзи наименование манги.
+    :param title_eng: Английское наименование манги.
     :return: Дата премьеры манги в формате гггг-мм-чч или False, если дата на странице не найдена.
     """
-    if pp := search_manga(title, wp_page):
+    if pp := search_manga(title_rom, title_eng, wp_page):
         pos1, pos2 = pp
     else:
         return False
