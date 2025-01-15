@@ -51,6 +51,18 @@ def manga_json(mu_id: int) -> json.JSONEncoder:
     return requests.get(f'{AMUS}{mu_id}').json()
 
 
+def related_manga(mu_json: json.JSONEncoder) -> list[dict]:
+    """
+    Поиск по ID манги в MangaUpdates, извлечение ID связанной манги и пометка их для обработки.
+    :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
+    :return: Список словарей [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)].
+    """
+    result = []
+    for rs in mu_json['related_series']:
+        result.append({'id': rs['related_series_id'], 'name': rs['related_series_name'], 'add': True})
+    return result
+
+
 def related_manga_id(mu_id: int) -> list[dict]:
     """
     Поиск по ID манги в MangaUpdates, извлечение ID связанной манги и пометка их для обработки.
@@ -58,10 +70,7 @@ def related_manga_id(mu_id: int) -> list[dict]:
     :return: Список словарей [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)].
     """
     data = manga_json(mu_id)
-    result = []
-    for rs in data['related_series']:
-        result.append({'id': rs['related_series_id'], 'name': rs['related_series_name'], 'add': True})
-    return result
+    return related_manga(data)
 
 
 def related_manga_title(title: str) -> list[dict]:
@@ -136,13 +145,15 @@ def select_title(mu_json: json.JSONEncoder, lang: str) -> str:
     """
     Выбор наименования манги через обращение к пользователю.
     :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
-    :param lang: Язык наименования: "orig", "eng".
+    :param lang: Язык наименования: "orig", "eng", "rus".
     :return: Наименование манги.
     """
     if lang == 'orig':
         lang = 'оригинальное'
     elif lang == 'eng':
         lang = 'английское'
+    elif lang == 'rus':
+        lang = 'русское'
     else:
         raise ValueError('Неверно указан язык.')
     titles = []
