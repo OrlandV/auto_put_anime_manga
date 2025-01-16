@@ -3,14 +3,23 @@
 """
 import xml.etree.ElementTree as et
 import dateutil.parser as date_parser
-import datetime
 from time import sleep
 import requests
-from PIL import Image
-from urllib.request import urlopen
 
-import db
 from constants import *
+from decode_name import month
+import db
+from config import *
+
+
+def xml(params: dict) -> str:
+    """
+    XML-страница манги на ANN.
+    :param params: GET-параметры.
+    :return: XML-страница манги на ANN.
+    """
+    sleep(1)
+    return requests.get(f'{CANNE}api.xml', params).text
 
 
 def number_of_volumes(ann_xml: str) -> int | bool:
@@ -37,10 +46,7 @@ def date_of_premiere_manga(ann_xml: str) -> str | bool:
     """
     pos1 = ann_xml.find('type="Vintage"') + 15
     if ann_xml[pos1 + 7:pos1 + 10] == '</i':
-        date = date_parser.parse(ann_xml[pos1:pos1 + 7])
-        date = datetime.date(date.year + (date.month == 12), (date.month + 1 if date.month < 12 else 1),
-                             1) - datetime.timedelta(1)
-        return date.strftime('%Y-%m-%d')
+        return month(ann_xml[pos1:pos1 + 7])
     else:
         date = ann_xml[pos1:pos1 + 10]
         dp = date_parser.parse(date).strftime('%Y-%m-%d')
@@ -81,8 +87,18 @@ def manga_from_anime(anime_page: str) -> str | bool:
         return False
     pos2 = anime_page.find('"/>', pos)
     mid = int(anime_page[pos:pos2])
+    return xml({M: mid})
+
+
+def html(page: str, params: dict) -> str:
+    """
+    Страница (HTML-код) в ANN.
+    :param page: Имя PHP-модуля.
+    :param params: GET-параметры.
+    :return: Страница (HTML-код) в ANN.
+    """
     sleep(1)
-    return requests.get(f'{CANNE}api.xml', {M: mid}).text
+    return requests.get(f'{SANNE}{page}.php', params).text
 
 
 def search_publishing(ann_id: int) -> str | bool:
@@ -95,8 +111,7 @@ def search_publishing(ann_id: int) -> str | bool:
         pos = data.find('">', pos1, pos2) + 2
         return data[pos:pos2]
 
-    sleep(1)
-    data = requests.get(f'{SANNE}{M}.php', {'id': ann_id}).text
+    data = html(M, {'id': ann_id})
     pos1 = data.find('<b>Publisher</b>')
     if pos1 == -1:
         return False
@@ -135,7 +150,7 @@ def publications_id_and_date_of_premiere(ann_xml: str, oam: str, put_publication
         #     if not date_of_premiere:
         #         raise ValueError('В ANN нет ни издания, ни даты.')
         #     return False, False
-        ann_html = requests.get(f'{SANNE}{M}.php', {'id': id_}).text
+        ann_html = html(M, {'id': id_})
         pos = ann_html.find('<b>Publisher</b>') + 17
         if pos == 16:
             if not date_of_premiere:
@@ -176,8 +191,7 @@ def authors_of_manga_id(ann_xml: str, oam: str) -> list[int] | bool:
             continue
         pos = ann_xml.find('<person id="', pos, posb) + 12
         pid = int(ann_xml[pos:ann_xml.find('"', pos, posb)])
-        sleep(1)
-        ann_page = requests.get(f'{SANNE}people.php', {'id': pid}).text
+        ann_page = html('people', {'id': pid})
         pos = ann_page.find('<h1 id="page_header" class="same-width-as-main">') + 49
         pose = ann_page.find('</div>', pos)
         pos2 = ann_page.find('</h1>', pos, pose)
@@ -252,6 +266,4 @@ def poster(page: str, mid: int, name: str) -> None:
             file.write(f'{mid},"{name}","Нет постера."')
         return
     else:
-        img = Image.open(urlopen(url))
-        img.thumbnail((100, 100))
-        img.save(f'{PATH}m/{mid}.jpg')
+        db.save_poster(url, mid, 1)

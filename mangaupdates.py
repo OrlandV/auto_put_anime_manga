@@ -4,9 +4,8 @@
 import json
 from time import sleep
 import requests
-from PIL import Image
-from urllib.request import urlopen
 
+from config import *
 from constants import *
 import db
 from decode_name import normal_name
@@ -32,7 +31,7 @@ def genres_id(data: json.JSONEncoder, oam: str) -> list[int]:
                 add = input('Добавить жанр? Y/N: ')
                 if add == 'Y' or add == 'y':
                     new_genre = input('Наименование жанра на русском: ')
-                    result.append(db.put(f'{OAM}frmAddGenre.php', {'name_': new_genre}))
+                    result.append(db.put('Genre', {'name_': new_genre}))
                     new_genres[genre['genre']] = new_genre
     if len(new_genres):
         with open('new_genres.json', 'a', encoding='utf8') as file:
@@ -200,6 +199,4 @@ def poster(mu_json: json.JSONEncoder, mid: int, name: str) -> None:
             file.write(f'{mid},"{name}","Нет постера."')
         return
     else:
-        img = Image.open(urlopen(url))
-        img.thumbnail((100, 100))
-        img.save(f'{PATH}m/{mid}.jpg')
+        db.save_poster(url, mid, 1)

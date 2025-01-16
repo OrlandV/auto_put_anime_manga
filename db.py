@@ -3,10 +3,45 @@
 """
 import requests
 import re
+from PIL import Image
+from urllib.request import urlopen
 
 from config import *
 import world_art as wa
 from decode_name import decode_name
+
+
+def _edit_section(section: str) -> str:
+    """
+    Правка наименования раздела вэб-приложения.
+    :param section: Наименование раздела из списка (регистр игнорируется):
+        ["Anime", "AuthorOfManga", "Format", "Genre", "Manga", "Publication", "Publishing", "Studio"].
+    """
+    section = section.lower().title()
+    if section not in ("Anime", "AuthorOfManga", "Format", "Genre", "Manga", "Publication", "Publishing", "Studio"):
+        raise ValueError(f'Передан не верный аргумент «{section}». Ожидается один из списка: «Anime», «AuthorOfManga», '
+                         '«Format», «Genre», «Manga», «Publication», «Publishing», «Studio».')
+    return section
+
+
+def _url_section(section: str) -> str:
+    """
+    URL-адрес раздела вэб-приложения — интерфейса БД.
+    :param section: Наименование раздела из списка (регистр игнорируется):
+        ["Anime", "AuthorOfManga", "Format", "Genre", "Manga", "Publication", "Publishing", "Studio"].
+    """
+    section = _edit_section(section)
+    return f'{OAM}frmAdd{section}.php'
+
+
+def page(section: str, params: dict | None = None) -> str:
+    """
+    Страница (HTML-код) раздела вэб-приложения — интерфейса БД.
+    :param section: Наименование раздела из списка (регистр игнорируется):
+        ["Anime", "AuthorOfManga", "Format", "Genre", "Manga", "Publication", "Publishing", "Studio"].
+    :param params: GET-параметры.
+    """
+    return requests.get(_url_section(section), params=params, cookies=COOKIES_O).text
 
 
 def frequency(publishing: str, publication: str) -> str:
@@ -26,16 +61,17 @@ def frequency(publishing: str, publication: str) -> str:
     return publication
 
 
-def put(url: str, data: dict) -> int:
+def put(section: str, data: dict) -> int:
     """
     Добавление записи в БД и возврат ID.
-    :param url: URL для request.
+    :param section: Наименование раздела из списка (регистр игнорируется):
+        ["Anime", "AuthorOfManga", "Format", "Genre", "Manga", "Publication", "Publishing", "Studio"].
     :param data: Данные для метода post (кроме кнопки отправки формы, которая добавляется в данной функции).
     :return: ID в БД.
     """
     data['ok'] = 'OK'
-    r = requests.post(url, data, cookies=COOKIES_O)
-    r = requests.get(url, {'sort': 'identd'}, cookies=COOKIES_O).text
+    r = requests.post(_url_section(section), data, cookies=COOKIES_O)
+    r = page(section, {'sort': 'identd'})
     pos1 = r.find('<th></th>')
     pos1 = r.find('<td class="cnt">', pos1) + 16
     pos2 = r.find('</td>', pos1)
@@ -49,8 +85,7 @@ def put_publication(data: dict) -> int:
     :return: ID издания в БД.
     """
     data_ = {'name_': data['name'], 'putyp': data['type']}
-    url = f'{OAM}frmAddPublication.php'
-    op = requests.get(url, cookies=COOKIES_O).text
+    op = page('Publication')
     pos1 = op.find('<select name="mapbs"')
     pos2 = op.find('</select>', pos1)
     pos2 = op.find(f'">{data['publishing']}</option>', pos1, pos2)
@@ -58,8 +93,8 @@ def put_publication(data: dict) -> int:
         pos1 = op.find('value="', pos2 - 15, pos2) + 7
         data_['mapbs'] = int(op[pos1:pos2])
     else:  # Добавление издательства в БД и получение ID.
-        data_['mapbs'] = put(f'{OAM}frmAddPublishing.php', {'name_': data['publishing']})
-    return put(url, data_)
+        data_['mapbs'] = put('Publishing', {'name_': data['publishing']})
+    return put('Publication', data_)
 
 
 def publications_id(oam: str, publications: list[dict], put_publication_site) -> list[int]:
@@ -93,15 +128,25 @@ def publications_id(oam: str, publications: list[dict], put_publication_site) ->
     return result
 
 
+def _valid_type_people(type_people: str) -> None:
+    """
+    Проверка наименования типа персоны.
+    :param type_people: Тип персоны (специализация) из списка: ["AuthorOfManga", "Director"].
+    """
+    if type_people not in ("AuthorOfManga", "Director"):
+        raise ValueError(f'Передан не верный аргумент «{type_people}». Ожидается один из списка: «AuthorOfManga», '
+                         '«Director».')
+
+
 def put_people(people: dict, type_people: str) -> int:
     """
     Добавление персоны в БД и возврата ID.
     :param people: Словарь имён.
-    :param type_people: Тип персоны (специализация).
+    :param type_people: Тип персоны (специализация) из списка: ["AuthorOfManga", "Director"].
     :return: ID персоны в БД.
     """
-    return put(f'{OAM}frmAdd{type_people}.php',
-               {'naori': decode_name(people['name_orig']), 'narom': people['name_rom']})
+    _valid_type_people(type_people)
+    return put(type_people, {'naori': decode_name(people['name_orig']), 'narom': people['name_rom']})
 
 
 def authors_of_manga_id(authors: list[dict], oam: str) -> list[int] | bool:
@@ -152,3 +197,15 @@ def select_genres(oam: str, title: str) -> list:
             return list(map(int, numbers))
         except ValueError:
             print('Ошибка! Требуется ввести целые числа через пробел.')
+
+
+def save_poster(url: str, id_: int, am: int | bool = 0) -> None:
+    """
+    Сохранение микропостера.
+    :param url: URL-адрес постера.
+    :param id_: ID anime или манги в БД (возвращённое put).
+    :param am: Переключатель: 0 — anime, 1 — manga.
+    """
+    img = Image.open(urlopen(url))
+    img.thumbnail((100, 100))
+    img.save(f'{PATH}{'m' if am else 'a'}/{id_}.jpg')

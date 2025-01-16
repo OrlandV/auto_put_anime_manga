@@ -8,7 +8,9 @@ from datetime import time
 
 from decode_name import points_codes
 from constants import *
+from config import *
 from decode_name import decode_name
+import animenewsnetwork as ann
 import db
 
 
@@ -133,8 +135,7 @@ def manga_in_ann(page: str, ann_pages: dict) -> tuple[str | bool, dict]:
         return False, ann_pages
     mid = int(page[pos1:page.find("' ", pos1, pos2)])
     ann_pages[mid] = True  # Отметка об обработке страницы.
-    sleep(1)
-    return requests.get(f'{CANNE}api.xml', {M: mid}).text, ann_pages
+    return ann.xml({M: mid}), ann_pages
 
 
 # def manga_in_wp(page: str) -> str | bool:
@@ -159,7 +160,7 @@ def put_people(pid: int, type_people: str) -> int:
     """
     Извлечение имён персоны из WA, добавление в БД и возврат ID.
     :param pid: ID персоны в WA.
-    :param type_people: Тип персоны (специализация).
+    :param type_people: Тип персоны (специализация) из списка: ["AuthorOfManga", "Director"].
     :return: ID персоны в БД.
     """
     sleep(1)
@@ -178,7 +179,7 @@ def put_people(pid: int, type_people: str) -> int:
         data['naori'] = decode_name(page[pos1:pos2])
     else:
         data['naori'] = data['narom']
-    return db.put(f'{OAM}frmAdd{type_people}.php', data)
+    return db.put(type_people, data)
 
 
 def authors_of_manga_id(page: str, oam: str) -> list:
@@ -437,7 +438,7 @@ def format_id(wa_page: str, o_page: str) -> int:
     result = wa_page[pos1:pos]
     pos2 = o_page.find(f'">{result}</option>')
     if pos2 == -1:
-        return db.put(f'{OAM}frmAddFormat.php', {'name_f': result})
+        return db.put('Format', {'name_f': result})
     pos1 = o_page.find('="', pos2 - 4) + 2
     return int(o_page[pos1:pos2])
 
@@ -473,7 +474,7 @@ def studios_id(wa_page: str, o_page: str) -> list:
             pos_o1 = o_page.find('="', pos_o2 - 5) + 2
             result.append(int(o_page[pos_o1:pos_o2]))
         else:
-            result.append(db.put(f'{OAM}frmAddStudio.php', {'name_s': studio}))
+            result.append(db.put('Studio', {'name_s': studio}))
         pos_w1 = data.find("class='estimation'>", pos_w1, pos_w2) + 19
     return result
 
@@ -544,8 +545,7 @@ def anime_in_ann(wa_page: str) -> str | bool:
     if pos1 == 57:
         return False
     aid = int(wa_page[pos1:wa_page.find("' ", pos1, pos2)])
-    sleep(1)
-    return requests.get(f'{CANNE}api.xml', {'anime': aid}).text
+    return ann.xml({'anime': aid})
 
 
 def number_of_episodes(wa_page: str) -> int:

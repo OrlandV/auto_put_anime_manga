@@ -1,6 +1,3 @@
-from config import *
-
-OAMM = f'{OAM}frmAddManga.php'
 WA = 'http://www.world-art.ru/'
 A = 'animation'
 WAA = WA + A + '/'

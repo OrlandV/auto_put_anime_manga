@@ -2,6 +2,8 @@
 Функции декодирования символов Юникод или их замены.
 """
 import re
+import dateutil.parser as date_parser
+import datetime
 
 
 def decode_name(name: str) -> str:
@@ -41,3 +43,15 @@ def points_codes(text: str) -> str:
         p = ord(text[i])
         text2 += f'&#{p};' if p in points else text[i]
     return text2
+
+
+def month(date: str) -> str:
+    """
+    Формирование строки даты в формате yyyy-mm-dd для указанных года и месяца.
+    :param date: Строка с датой из года и месяца.
+    :return: Строка даты в формате yyyy-mm-dd.
+    """
+    date = date_parser.parse(date)
+    date = datetime.date(date.year + (date.month == 12), (date.month + 1 if date.month < 12 else 1),
+                         1) - datetime.timedelta(1)
+    return date.strftime('%Y-%m-%d')

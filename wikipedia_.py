@@ -2,9 +2,8 @@
 Поиск страниц на Wikipedia и их обработка.
 """
 import dateutil.parser as date_parser
-import datetime
 
-from decode_name import normal_name
+from decode_name import normal_name, month
 import db
 
 
@@ -90,10 +89,7 @@ def date_of_premiere_manga(wp_page: str, title_rom: str, title_eng: str) -> str 
         return date_parser.parse(date).strftime('%Y') + '-12-31'
     date_ = date.split(' ')
     if len(date_) == 2:
-        date = date_parser.parse(date)
-        date = datetime.date(date.year + (date.month == 12), (date.month + 1 if date.month < 12 else 1),
-                             1) - datetime.timedelta(1)
-        return date.strftime('%Y-%m-%d')
+        return month(date)
     return date_parser.parse(date).strftime('%Y-%m-%d')
 
 
@@ -106,11 +102,12 @@ def put_publication(publication: dict) -> int:
     return db.put_publication(publication)
 
 
-def publications_id(title: str, wp_page: str, oam: str) -> list[int] | bool:
+def publications_id(title_rom: str, title_eng: str, wp_page: str, oam: str) -> list[int] | bool:
     """
     Поиск ID соответствующих изданий из Wikipedia в БД.
     :param wp_page: Страница на Wikipedia (HTML-код).
-    :param title: Наименование манги.
+    :param title_rom: Ромадзи наименование манги.
+    :param title_eng: Английское наименование манги.
     :param oam: Страница веб-приложения интерфейса БД (HTML-код).
     :return: Список ID изданий в БД.
     """
@@ -147,7 +144,7 @@ def publications_id(title: str, wp_page: str, oam: str) -> list[int] | bool:
             return res
         return [(posa_, posb)]
 
-    if pp := search_manga(title, wp_page):
+    if pp := search_manga(title_rom, title_eng, wp_page):
         pos1, pos2 = pp
     else:
         return False

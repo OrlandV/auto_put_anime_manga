@@ -1,13 +1,12 @@
 import requests
 from time import sleep
 import xml.etree.ElementTree as et
-from PIL import Image
-from urllib.request import urlopen
 import json
 import wikipedia
 from wikipedia.exceptions import PageError as WPPageError
 
 from input import *
+from config import *
 from constants import *
 import world_art as wa
 import animenewsnetwork as ann
@@ -15,6 +14,21 @@ import wikipedia_ as wp
 import decode_name as dn
 import db
 import mangaupdates as mu
+
+
+def del_empty(data: dict) -> dict:
+    """
+    Удаление пустых полей.
+    :param data: Словарь данных.
+    :return: Словарь данных, очищенный от пустых полей.
+    """
+    dk = []
+    for k, v in data.items():
+        if not isinstance(v, int) and len(v) == 0:
+            dk.append(k)
+    for k in dk:
+        del data[k]
+    return data
 
 
 def extraction_manga_from_wa(wa_page: str) -> dict:
@@ -65,7 +79,7 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
     amnru = wa.manga_name_r(wa.name_rus, wa_page)
     if amnru == amnro and mu_json:
         amnru = mu.select_title(mu_json, 'rus')
-    oam = requests.get(f'{OAM}frmAddManga.php', cookies=COOKIES_O).text
+    oam = db.page('Manga')
     res = {
         'maaum[]': wa.authors_of_manga_id(wa_page, oam),
         'mapbc[]': wa.publications_id(wa_page, oam),
@@ -83,13 +97,7 @@ def extraction_manga_from_wa(wa_page: str) -> dict:
         res['amnru'] = ''
     if res['amnen'] == '' and res['amnor'] == res['amnro']:
         res['amnen'] = res['amnro']
-    dk = []
-    for k, v in res.items():
-        if not isinstance(v, int) and len(v) == 0:
-            dk.append(k)
-    for k in dk:
-        del res[k]
-    return res
+    return del_empty(res)
 
 
 def extraction_anime_from_wa(page: str, mid: int = 0) -> dict:
@@ -99,7 +107,7 @@ def extraction_anime_from_wa(page: str, mid: int = 0) -> dict:
     :param mid: ID манги в БД. 0 — нет манги в БД.
     :return: Словарь данных.
     """
-    oam = requests.get(f'{OAM}frmAddAnime.php', cookies=COOKIES_O).text
+    oam = db.page('Anime')
     res = {
         'anfor': wa.format_id(page, oam),
         'anstu[]': wa.studios_id(page, oam),
@@ -120,12 +128,7 @@ def extraction_anime_from_wa(page: str, mid: int = 0) -> dict:
         res['amnor'] = res['amnro']
     if res['amnen'] == '' and res['amnor'] == res['amnro']:
         res['amnen'] = res['amnro']
-    dk = []
-    for k, v in res.items():
-        if not isinstance(v, int) and len(v) == 0:
-            dk.append(k)
-    for k in dk:
-        del res[k]
+    res = del_empty(res)
     if mid:
         res['anman[]'] = mid
     return res
@@ -136,7 +139,7 @@ def wa_ann_poster(wa_page: str, mid: int, name: str, am: int | bool = 0) -> None
     Поиск, загрузка и сохранение постера с сервера World Art или ANN
     в виде миниатюрной картинки для своей БД.
     :param wa_page: World Art страница (HTML-код).
-    :param mid: ID в БД (возвращённое put_in_db).
+    :param mid: ID в БД (возвращённое db.put).
     :param name: Наименование.
     :param am: Переключатель: 0 — anime, 1 — manga.
     """
@@ -162,9 +165,7 @@ def wa_ann_poster(wa_page: str, mid: int, name: str, am: int | bool = 0) -> None
         ann = requests.get(f'{CANNE}api.xml', {M if am else 'anime': aid}).text
         root = et.fromstring(ann)
         url = root[0].find('info').attrib['src']
-    img = Image.open(urlopen(url))
-    img.thumbnail((100, 100))
-    img.save(f'{PATH}{'m' if am else 'a'}/{mid}.jpg')
+    db.save_poster(url, mid, am)
 
 
 def search_manga_in_mu(ann_xml: str) -> json.JSONEncoder | None:
@@ -209,7 +210,7 @@ def extraction_manga_from_ann(ann_xml: str) -> dict:
         amnro = ann.title(ann_xml, 'rom')
     else:
         amnro = mu_json['title']
-    oam = requests.get(f'{OAM}frmAddManga.php', cookies=COOKIES_O).text
+    oam = db.page('Manga')
     sleep(1)
     try:
         wp_page = wikipedia.page(amnro).html()
@@ -219,8 +220,9 @@ def extraction_manga_from_ann(ann_xml: str) -> dict:
     publications_id = None
     if mu_json:
         publications_id = mu.publications_id(mu_json, oam)
+    amnen = ann.title(ann_xml, 'eng') or mu.select_title(mu_json, 'eng')
     if not publications_id:
-        publications_id = wp.publications_id(amnro, wp_page, oam)
+        publications_id = wp.publications_id(amnro, amnen, wp_page, oam)
         if not publications_id:
             (publications_id, date_of_premiere), nd = ann.publications_id_and_date_of_premiere(
                 ann_xml, oam, put_publication_ann
@@ -229,11 +231,10 @@ def extraction_manga_from_ann(ann_xml: str) -> dict:
     if not len(genres):
         genres = db.select_genres(oam, amnro)
     if not date_of_premiere:
-        date_of_premiere = wp.date_of_premiere_manga(wp_page, amnro)
+        date_of_premiere = wp.date_of_premiere_manga(wp_page, amnro, amnen)
     nd = True if date_of_premiere and date_of_premiere[5:] == '12-31' else False
     if not date_of_premiere:
         date_of_premiere = '1900-01-01'
-    amnen = ann.title(ann_xml, 'eng') or mu.select_title(mu_json, 'eng')
     nnv = True
     nv = ann.number_of_volumes(ann_xml) or (0 if not mu_json else mu.volumes(mu_json))
     if nv:
@@ -258,13 +259,7 @@ def extraction_manga_from_ann(ann_xml: str) -> dict:
         res['amnor'] = res['amnro']
     # if res['amnru'] == res['amnro']:
     #     res['amnru'] = ''
-    dk = []
-    for k, v in res.items():
-        if not isinstance(v, int) and len(v) == 0:
-            dk.append(k)
-    for k in dk:
-        del res[k]
-    return res
+    return del_empty(res)
 
 
 def extraction_manga_from_mu(mu_json: json.JSONEncoder) -> dict:
@@ -281,7 +276,7 @@ def extraction_manga_from_mu(mu_json: json.JSONEncoder) -> dict:
     else:
         nc = nv
         nnc = True
-    oam = requests.get(f'{OAM}frmAddManga.php', cookies=COOKIES_O).text
+    oam = db.page('Manga')
     genres = mu.genres_id(mu_json, oam)
     if not len(genres):
         genres = db.select_genres(oam, mu_json['title'])
@@ -300,13 +295,7 @@ def extraction_manga_from_mu(mu_json: json.JSONEncoder) -> dict:
     }
     if not res['amnor']:
         res['amnor'] = res['amnro']
-    dk = []
-    for k, v in res.items():
-        if not isinstance(v, int) and len(v) == 0:
-            dk.append(k)
-    for k in dk:
-        del res[k]
-    return res
+    return del_empty(res)
 
 
 mu_pages = mu.related_manga_title(title)  # [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)]
@@ -319,14 +308,14 @@ if wa_anime_page := wa.search_anime(title, form, year):
             # if page == pages[0]:
             #     continue
             data = extraction_manga_from_wa(page)
-            mid = db.put(OAMM, data)
+            mid = db.put('Manga', data)
             wa_ann_poster(page, mid, data['amnro'], 1)
     pages = wa.anime_pages(wa_anime_page)
     for page in pages:
         # if page == pages[0]:
         #     continue
         data = extraction_anime_from_wa(page, mid)
-        aid = db.put(f'{OAM}frmAddAnime.php', data)
+        aid = db.put('Anime', data)
         wa_ann_poster(page, aid, data['amnro'])
     for ann_id, done in ann_pages.items():
         if not done:
@@ -335,11 +324,11 @@ if wa_anime_page := wa.search_anime(title, form, year):
             data = extraction_manga_from_ann(page)
             # if ann_id in (,):
             #     continue
-            mid = db.put(OAMM, data)
+            mid = db.put('Manga', data)
             ann.poster(page, mid, data['amnro'])
     for mup in mu_pages:
         if mup['add']:
             mu_json = mu.manga_json(mup['id'])
             data = extraction_manga_from_mu(mu_json)
-            mid = db.put(OAMM, data)
+            mid = db.put('Manga', data)
             mu.poster(mu_json, mid, data['amnro'])
