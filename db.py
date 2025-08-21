@@ -214,8 +214,6 @@ class DB(dbc.DB):
         mid = self.execute(query)
         for f in (41, 45, 15, 51):
             if self.fields[f] in data and data[self.fields[f]]:
-                if f == 15 and not len(data[self.fields[f]]):
-                    data[self.fields[f]].append(22)  # Индекс значения «—<Не определён>—».
                 for value in data[self.fields[f]]:
                     if value:
                         if isinstance(value, int):
@@ -270,10 +268,10 @@ class DB(dbc.DB):
         if fni == 53:
             query = f'{query_}{self.fields[17]}, "{value[self.fields[17]]}") > 0'
             res = self.__get_id(query)
-            if not res:
+            if not res and self.fields[16] in value and value[self.fields[16]]:
                 query = f'{query_}{self.fields[16]}, "{value[self.fields[16]]}") > 0'
                 res = self.__get_id(query)
-            if not res:
+            if not res and self.fields[16] in value and value[self.fields[16]]:
                 query = f'{query_}{self.fields[16]}, "{value[self.fields[16]].replace(' ', '')}") > 0'
                 res = self.__get_id(query)
         else:

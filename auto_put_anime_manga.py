@@ -95,7 +95,8 @@ def notes(mdata: dict) -> str:
     v = True if not mdata['number_of_volumes'] else False
     c = True if not mdata['number_of_chapters'] or (
             mdata['number_of_volumes'] and mdata['number_of_volumes'] == mdata['number_of_chapters']) else False
-    d = True if int(mdata['date_of_premiere'][8:]) > 27 else False
+    d = True if not mdata['date_of_premiere'] or (
+            mdata['date_of_premiere'] and int(mdata['date_of_premiere'][8:]) > 27) else False
     return (f'{'Нет инф-и о' if v or c or d else ''}{' кол-ве' if v or c else ''}{' томов' if v else ''}'
             f'{',' if v and c else ''}{' глав' if c else ''}{' и' if (v or c) and d else ''}'
             f'{' точной дате премьеры' if d else ''}{'.' if v or c or d else ''}')
@@ -145,38 +146,39 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
         Поиск соответствующей манги в словаре MU и дополнение недостающими данными единого словаря данных по манге.
         :param _i: Величина погрешности в указании года премьеры манги в MU относительно WA, ANN или WP.
         """
-        nonlocal mdata, ids
-        md = int(mdata['date_of_premiere'][:4])
-        for muid, mudata in mu_data.items():
-            q = False
-            mud = int(mudata['date_of_premiere'][:4])
-            if mud == md or (_i and mud == md + _i):
-                for aut in mudata['author_of_manga'].values():
-                    q = maut(aut)
-            if q:
-                for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'number_of_volumes', 'number_of_chapters',
-                            'poster'):
-                    if (tit not in mdata or not mdata[tit]) and mudata[tit]:
-                        mdata[tit] = mudata[tit]
-                    if tit in ('number_of_volumes', 'number_of_chapters') and not mdata[tit]:
-                        mdata[tit] = 1
-                for aut in mudata['author_of_manga'].values():
-                    for ma in mdata['author_of_manga']:
-                        if not aut['name_orig'] and aut['name_rom'] in ma['name_rom']:
-                            ma['name_orig'] = aut['name_orig']
+        if mu_data:
+            nonlocal mdata, ids
+            md = int(mdata['date_of_premiere'][:4])
+            for muid, mudata in mu_data.items():
+                q = False
+                mud = int(mudata['date_of_premiere'][:4])
+                if mud == md or (_i and mud == md + _i):
+                    for aut in mudata['author_of_manga'].values():
+                        q = maut(aut)
+                if q:
+                    for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus',
+                                'number_of_volumes', 'number_of_chapters', 'poster'):
+                        if (tit not in mdata or not mdata[tit]) and mudata[tit]:
+                            mdata[tit] = mudata[tit]
+                        if tit in ('number_of_volumes', 'number_of_chapters') and not mdata[tit]:
+                            mdata[tit] = 1
+                    for aut in mudata['author_of_manga'].values():
+                        for ma in mdata['author_of_manga']:
+                            if not aut['name_orig'] and aut['name_rom'] in ma['name_rom']:
+                                ma['name_orig'] = aut['name_orig']
+                                break
+                    for mp in mudata['publication']:
+                        if not len(mdata['publication']):
+                            mdata['publication'] = mudata['publication']
                             break
-                for mp in mudata['publication']:
-                    if not len(mdata['publication']):
-                        mdata['publication'] = mudata['publication']
-                        break
-                    for ap in mdata['publication']:
-                        if ap['publication'] == mp['publication']:
-                            break
-                    else:
-                        mdata['publication'].append(mp)
-                if ('genre' not in mdata or not mdata['genre']) and len(mudata['genre']):
-                    mdata['genre'].extend(mudata['genre'])
-                ids[M]['MU'].append(muid)
+                        for ap in mdata['publication']:
+                            if ap['publication'] == mp['publication']:
+                                break
+                        else:
+                            mdata['publication'].append(mp)
+                    if ('genre' not in mdata or not mdata['genre']) and len(mudata['genre']):
+                        mdata['genre'].extend(mudata['genre'])
+                    ids[M]['MU'].append(muid)
 
     def awp() -> None:
         """
@@ -224,6 +226,23 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                             dd.append(d)
                     adata['director'].extend(dd)
 
+    def not_none(_am: bool = True) -> dict:
+        """
+        Замена None в обязательных полях на значения по умолчанию (или заглушки).
+        :param _am: Переключатель anime/манга (False/True).
+        :return: Изменённый соответствующий словарь данных.
+        """
+        tit_v = {'date_of_premiere': '1900-12-31', 'genre': [22]}  # Индекс значения «—<Не определён>—».
+        if _am:
+            _res = mdata
+            tit_v.update({'number_of_volumes': 1, 'number_of_chapters': 1})
+        else:
+            _res = adata
+        for tit, v in tit_v.items():
+            if not _res[tit]:
+                _res[tit] = v
+        return _res
+
     res = {M: [], A: []}
     ids = {M: {'WA': [], 'ANN': [], 'WP': [], 'MU': []}, A: {'WA': [], 'ANN': []}}
 
@@ -259,6 +278,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             mwp(1)
             mmu(1)
             mdata['notes'] = notes(mdata)
+            mdata = not_none()
             res[M].append(mdata)
     if M in ann_data:
         for annid, anndata in ann_data[M].items():
@@ -278,6 +298,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             mwp()
             mmu()
             mdata['notes'] = notes(mdata)
+            mdata = not_none()
             res[M].append(mdata)
     if wp_data and M in wp_data:
         for wpt, wpdata in wp_data[M].items():
@@ -304,10 +325,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             for tit in ('name_orig', 'name_rom'):
                 if not mdata[tit] and mdata['name_eng']:
                     mdata[tit] = mdata['name_eng']
-            for tit in ('number_of_volumes', 'number_of_chapters'):
-                if not mdata[tit]:
-                    mdata[tit] = 1
             mdata['notes'] = notes(mdata)
+            mdata = not_none()
             res[M].append(mdata)
     if mu_data:
         for muid, mudata in mu_data.items():
@@ -327,6 +346,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 mdata['genre'] = mudata['genre']
             ids[M]['MU'].append(muid)
             mdata['notes'] = notes(mdata)
+            mdata = not_none()
             res[M].append(mdata)
 
     # anime
@@ -393,6 +413,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                             i += 1
                     ids[A]['ANN'].append(annid)
             awp()
+            adata = not_none(False)
             res[A].append(adata)
     for annid, anndata in ann_data[A].items():
         if annid in ids[A]['ANN']:
@@ -415,6 +436,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 i += 1
         ids[A]['ANN'].append(annid)
         awp()
+        adata = not_none(False)
         res[A].append(adata)
     return res
 

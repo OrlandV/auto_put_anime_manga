@@ -52,8 +52,9 @@ def search_pages(search: str) -> dict[str, str]:
     """
     search_ = normal_name(search)
     page = html(search_)
-    if ('<div class="shortdescription nomobile noexcerpt noprint searchaux" style="display:none">'
-        'Name list</div>') in page or page == '404':
+    if (('<div class="shortdescription nomobile noexcerpt noprint searchaux" style="display:none">'
+         'Name list</div>') in page or page == '404' or (M not in search_ and search_ not in normal_name(page)) or
+            (M in search_ and search_[:-6] not in normal_name(page))):
         return {}
     res = {search_: page}
     posb = page.find('<table') + 7
@@ -308,6 +309,10 @@ def authors(page_part: str, *args) -> list[dict[str, str] | None]:
                 pos2 = apage.find("</span>", pos)
                 pos1 = apage.find(" (", pos, pos2)
                 name_orig = apage[pos:pos1] if pos1 != -1 else apage[pos:pos2]
+                while '<' in name_orig:
+                    pos = name_orig.find('<')
+                    pos2 = name_orig.find('>', pos) + 1
+                    name_orig = name_orig[:pos] + name_orig[pos2:]
                 if not name_rom:
                     pos = apage.find('<i lang="ja-Latn">', pos) + 18
                     name_ = apage[pos:apage.find('</i>', pos)].split()
@@ -425,6 +430,10 @@ def publications(page_part: str) -> dict[str, str]:
                     pos = pos + 3
                     posb = posb - 4
                 res[pp] = frequency(page_part[pos:posb])
+        elif pp == 'publication':
+            res.update({pp: f'? ({res['publishing']})', 'type': 2})
+        else:
+            break
     return res
 
 

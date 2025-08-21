@@ -135,7 +135,7 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
         """
         page = xml(_id)
         y = manga_date_of_premiere(page) if am else anime_date_of_premiere(page)
-        return int(y[:4]) != year
+        return int(y[:4]) != year if y else False
 
     search_ = dn.normal_name(search)
     data = requests.get(f'{SANNE}search/name', {'q': search_}).text
@@ -266,6 +266,8 @@ def manga_date_of_premiere(ann_xml: str) -> str | None:
     :return: Дата премьеры или None.
     """
     pos = ann_xml.find(' type="Vintage"') + 15
+    if pos == 14:
+        return
     pos = ann_xml.find('>', pos) + 1
     if ann_xml[pos + 7:pos + 10] == '</i' or ann_xml[pos + 8:pos + 10] == 'to' or '(' in ann_xml[pos:pos + 10]:
         return dn.month(ann_xml[pos:pos + 7])
@@ -371,13 +373,15 @@ def genres(ann_xml: str) -> list[str]:
     return result
 
 
-def poster(ann_xml: str) -> str:
+def poster(ann_xml: str) -> str | None:
     """
     Извлечение ссылки на постер из XML-страницы в ANN.
     :param ann_xml: XML-страница в ANN.
-    :return: Ссылка на постер в ANN.
+    :return: Ссылка на постер в ANN или None.
     """
     pos = ann_xml.find(' type="Picture"') + 15
+    if pos == 14:
+        return
     pos2 = ann_xml.find('>', pos)
     pos = ann_xml.find(' src="', pos, pos2) + 6
     return ann_xml[pos:ann_xml.find('"', pos, pos2)]
