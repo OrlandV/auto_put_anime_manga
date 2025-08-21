@@ -1,151 +1,107 @@
 """
-Поиск страниц на MangaUpdates и их обработка.
+Поиск страниц в MangaUpdates (далее — MU) и их обработка.
 """
 import json
 from time import sleep
 import requests
 
-from config import *
-from constants import *
-import db
 from decode_name import normal_name
-
-
-def genres_id(data: json.JSONEncoder, oam: str) -> list[int]:
-    """
-    Извлечение жанров из MangaUpdates.
-    :param data: Данные по манге с MangaUpdates в JSON-формате.
-    :param oam: Страница веб-приложения интерфейса БД (HTML-код).
-    :return: Список ID жанров в БД.
-    """
-    result = []
-    new_genres = {}
-    for genre in data['genres']:
-        if genre['genre'] not in IGNORED_GENRES_MU:
-            if genre['genre'] in GENRES_MU:
-                pos2 = oam.find(f'">{GENRES_MU[genre['genre']]}</option>')
-                pos1 = oam.find('="', pos2 - 5) + 2
-                result.append(int(oam[pos1:pos2]))
-            else:
-                print('Новый жанр в MangaUpdates!', genre['genre'])
-                add = input('Добавить жанр? Y/N: ')
-                if add == 'Y' or add == 'y':
-                    new_genre = input('Наименование жанра на русском: ')
-                    result.append(db.put('Genre', {'name_': new_genre}))
-                    new_genres[genre['genre']] = new_genre
-    if len(new_genres):
-        with open('new_genres.json', 'a', encoding='utf8') as file:
-            json.dump(new_genres, file, indent=4)
-        print('Перенесите новые жанры в «config.py» из «new_genres.json».')
-    return result
+from constants import *
+from config import IGNORED_GENRES, GENRES_MU
 
 
 def manga_json(mu_id: int) -> json.JSONEncoder:
     """
-    Манга в MangaUpdates.
-    :param mu_id: ID манги в MangaUpdates.
-    :return: Данные по манге с MangaUpdates в JSON-формате.
+    Получение данных по манге в MU.
+    :param mu_id: ID манги в MU.
+    :return: Данные по манге в MU в JSON-формате.
     """
     sleep(1)
     return requests.get(f'{AMUS}{mu_id}').json()
 
 
-def related_manga(mu_json: json.JSONEncoder) -> list[dict]:
+def search_pages_id(mangas: dict[int, json.JSONEncoder] | None, mu_id: int) -> dict[int, json.JSONEncoder]:
     """
-    Поиск по ID манги в MangaUpdates, извлечение ID связанной манги и пометка их для обработки.
-    :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
-    :return: Список словарей [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)].
+    Получение данных по манге из MU, включая по связанной манге.
+    :param mangas: Словарь {ID: JSON} полных JSON-словарей данных по манге в MU.
+    :param mu_id: ID манги в MU.
+    :return: Словарь {ID: JSON} полных JSON-словарей данных по манге в MU.
     """
-    result = []
-    for rs in mu_json['related_series']:
-        result.append({'id': rs['related_series_id'], 'name': rs['related_series_name'], 'add': True})
-    return result
+    manga = manga_json(mu_id)
+    if not mangas:
+        mangas = {}
+    mangas[mu_id] = manga
+    for rs in manga['related_series']:
+        if rs['related_series_id'] not in mangas and '(Novel)' not in rs['related_series_name']:
+           mangas = search_pages_id(mangas, rs['related_series_id'])
+    return mangas
 
 
-def related_manga_id(mu_id: int) -> list[dict]:
+def search_pages(search: str, year: int | None = None) -> dict[int, json.JSONEncoder] | None:
     """
-    Поиск по ID манги в MangaUpdates, извлечение ID связанной манги и пометка их для обработки.
-    :param mu_id: ID манги в MangaUpdates.
-    :return: Список словарей [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)].
+    Первичный поиск данных по манге в MU, выявление в JSON-ответе (данных по манге) связей с продолжением,
+    предысторией и ответвлений манги, и возврат словаря словарей (JSON).
+    :param search: Поисковый запрос — наименование искомой манги.
+    :param year: Год премьеры манги, если известен.
+    :return: Словарь {ID: JSON} полных JSON-словарей данных по манге в MU.
     """
-    data = manga_json(mu_id)
-    return related_manga(data)
-
-
-def related_manga_title(title: str) -> list[dict]:
-    """
-    Поиск по наименованию манги в MangaUpdates, извлечение ID связанной манги и пометка их для обработки.
-    :param title: Наименование манги.
-    :return: Список словарей [dict(id=mu_id: int, name=name: str, add=добавлять?: bool)].
-    """
-    title = normal_name(title)
+    search = normal_name(search)
     sleep(1)
-    data = requests.post(AMUS + 'search', {'search': title}).json()
+    data = requests.post(AMUS + 'search', {'search': search}).json()
     for res in data['results']:
-        if title == normal_name(res['hit_title']):
-            mu_id = res['record']['series_id']
-            break
+        if search == normal_name(res['hit_title']):
+            if year and int(res['record']['year']) != year:
+                continue
+            mangas = {}
+            mangas = search_pages_id(mangas, res['record']['series_id'])
+            return mangas
+
+
+def title_rom(mu_json: json.JSONEncoder) -> str:
+    """
+    Извлечение ромадзи наименования манги из полного JSON-словаря данных по манге в MU.
+    :param mu_json: Данные по манге в MU в JSON-формате.
+    :return: Ромадзи наименование манги в MU.
+    """
+    return mu_json['title']
+
+
+def date(mu_json: json.JSONEncoder) -> str:
+    """
+    Извлечение даты премьеры манги из полного JSON-словаря данных по манге в MU.
+    Т.к. в MU указан только год, то к году добавляется «-12-31» для соответствия формату yyyy.mm.dd.
+    Указание последнего года означает, что нет информации о точной дате,
+    а при сортировке по дате неточная информация должна быть в конце.
+    :param mu_json: Данные по манге в MU в JSON-формате.
+    :return: Дата премьеры манги в MU.
+    """
+    return mu_json['year'] + '-12-31'
+
+
+def volumes(mu_json: json.JSONEncoder) -> int:
+    """
+    Извлечение количества томов манги из полного JSON-словаря данных по манге в MU.
+    Если вместо количества томов в JSON-словаре указано количество глав,
+    то этот факт отмечается как отрицательное число в возвращаемом ответе функции.
+    :param mu_json: Данные по манге в MU в JSON-формате.
+    :return: Количество томов или количество глав (отрицательное число) манги в MU.
+    """
+    p = mu_json['status'].find(' ')
+    if len(mu_json['status']) and p != -1:
+        n = int(mu_json['status'][:p])
     else:
-        return []
-    return related_manga_id(mu_id)
-
-
-def authors_of_manga_id(mu_json: json.JSONEncoder, oam: str) -> list[int] | bool:
-    """
-    Поиск ID соответствующих авторов манги из MangaUpdates в БД.
-    :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
-    :param oam: Страница веб-приложения интерфейса БД (HTML-код).
-    :return: Список ID авторов манги в БД, если найдены. Иначе — False.
-    """
-    authors = []
-    for author in mu_json['authors']:
-        if author['type'] == 'Author':
-            sleep(1)
-            author_json = requests.get(f'{AMUA}{author['author_id']}').json()
-            authors.append({'name_orig': author_json['actualname'],
-                            'name_rom': author_json['name'].lower().title(),
-                            'exist': False})
-    return db.authors_of_manga_id(authors, oam)
-
-
-# def put_publication(publication: dict) -> int:
-#     """
-#     Добавление издания в БД из MangaUpdates и возврат ID.
-#     :param publication: Издание.
-#     :return: ID издания в БД.
-#     """
-#     return db.put_publication(publication)
-
-
-def publications_id(mu_json: json.JSONEncoder, oam: str) -> list[int] | bool:
-    """
-    Поиск ID соответствующих изданий манги из MangaUpdates в БД.
-    :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
-    :param oam: Страница веб-приложения интерфейса БД (HTML-код).
-    :return: Список ID изданий манги в БД, если найдены. Иначе — False.
-    """
-    if 'publications' not in mu_json:
-        return False
-    publications = []
-    for publication in mu_json['publications']:
-        publications.append({'name': publication['publication_name'],
-                             'publishing': publication['publisher_name'],
-                             'exist': False})
-    if not len(publications):
-        for publisher in mu_json['publishers']:
-            publications.append({'name': f'? ({publisher['publisher_name']})',
-                                 'publishing': publisher['publisher_name'],
-                                 'type': 2,
-                                 'exist': False})
-    return db.publications_id(oam, publications, db.put_publication)
+        return 1
+    if mu_json['status'][p + 1:p + 2] == 'V':
+        return n
+    return -n
 
 
 def select_title(mu_json: json.JSONEncoder, lang: str) -> str:
     """
     Выбор наименования манги через обращение к пользователю.
-    :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
+    :param mu_json: Данные по манге в MU в JSON-формате.
     :param lang: Язык наименования: "orig", "eng", "rus".
-    :return: Наименование манги.
+    :return: Наименование манги в MU.
     """
     if lang == 'orig':
         lang = 'оригинальное'
@@ -156,10 +112,10 @@ def select_title(mu_json: json.JSONEncoder, lang: str) -> str:
     else:
         raise ValueError('Неверно указан язык.')
     titles = []
-    text = '\n0. *** Подходящего варианта нет ***'
+    text = f'\n0. *** Подходящего варианта нет ***\n1. {mu_json['title']}'
     for i, title in enumerate(mu_json['associated']):
         titles.append(title['title'])
-        text += f'\n{i + 1}. {title['title']}'
+        text += f'\n{i + 2}. {title['title']}'
     print(f'Выберите {lang} наименование манги «{mu_json['title']}»:{text}')
     while True:
         num = input('Укажите номер: ')
@@ -169,34 +125,118 @@ def select_title(mu_json: json.JSONEncoder, lang: str) -> str:
         print('Ошибка! Требуется ввести целое число.')
     if not num:
         return ''
-    return titles[num - 1]
+    elif num == 1:
+        return mu_json['title']
+    return titles[num - 2]
 
 
-def volumes(mu_json: json.JSONEncoder) -> int:
+def authors_of_manga(mu_json: json.JSONEncoder) -> dict[int, dict[str, str]]:
     """
-    Количество томов.
-    :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
-    :return: Количество томов или количество глав (отрицательное число).
+    Извлечение авторов манги из полного JSON-словаря данных по манге в MU.
+    :param mu_json: Данные по манге в MU в JSON-формате.
+    :return: Словарь {ID: Словарь_имён} словарей имён авторов манги в MU.
     """
-    p = mu_json['status'].find(' ')
-    n = int(mu_json['status'][:p])
-    if mu_json['status'][p + 1:p + 2] == 'V':
-        return n
-    return -n
+    authors = {}
+    for author in mu_json['authors']:
+        if author['type'] in ('Author', 'Artist'):
+            sleep(1)
+            author_json = requests.get(f'{AMUA}{author['author_id']}').json()
+            pos = author_json['name'].find(' (')
+            name_rom = author_json['name'][:pos] if pos != -1 else author_json['name']
+            authors[author['author_id']] = {
+                'name_orig': author_json['actualname'],
+                'name_rom': name_rom.lower().title()
+            }
+    return authors
 
 
-def poster(mu_json: json.JSONEncoder, mid: int, name: str) -> None:
+def publications(mu_json: json.JSONEncoder) -> list[dict[str, str | int]] | None:
     """
-    Поиск, загрузка и сохранение постера манги с сервера MangaUpdates в виде миниатюрной картинки для своей БД.
-    :param mu_json: Данные по манге с MangaUpdates в JSON-формате.
-    :param mid: ID в БД (возвращённое db.put).
-    :param name: Наименование.
+    Извлечение изданий манги из полного JSON-словаря данных по манге в MU.
+    :param mu_json: Данные по манге в MU в JSON-формате.
+    :return: Список словарей изданий манги в MU в формате:
+        - [{'publication': Издание, 'publishing': Издательство}] — для журнала (type=1),
+        - [{'publication': ? (Издательство), 'publishing': Издательство, 'type': 2}] — для книг;
+        либо None.
     """
-    try:
-        url = mu_json['image']['url']['thumb']
-    except Exception:
-        with open(f'{PATH}m/report.log', 'a', encoding='utf8') as file:
-            file.write(f'{mid},"{name}","Нет постера."')
+    if 'publications' not in mu_json:
         return
+    res = []
+    for publication in mu_json['publications']:
+        res.append({'publication': publication['publication_name'], 'publishing': publication['publisher_name']})
+    if not len(res):
+        for publisher in mu_json['publishers']:
+            res.append({'publication': f'? ({publisher['publisher_name']})', 'publishing': publisher['publisher_name'],
+                        'type': 2})
+    return res
+
+
+def genres(mu_json: json.JSONEncoder) -> list[str]:
+    """
+    Извлечение жанров манги из полного JSON-словаря данных по манге в MU.
+    Если найден жанр, отсутствующий в словаре GENRES_MU, запрашивается у пользователя наименование жанра на русском.
+    Новый жанр сохраняется в файл new_genres.txt.
+    :param mu_json: Данные по манге в MU в JSON-формате.
+    :return: Список жанров манги в MU.
+    """
+    result = []
+    new_genres = {}
+    for genre in mu_json['genres']:
+        if genre['genre'] not in IGNORED_GENRES:
+            if genre['genre'] in GENRES_MU:
+                result.append(GENRES_MU[genre['genre']])
+            else:
+                print('Новый жанр в MangaUpdates!', genre['genre'])
+                add = input('Добавить жанр? Y/N: ')
+                if add == 'Y' or add == 'y':
+                    new_genre = input('Наименование жанра на русском: ')
+                    result.append(new_genre)
+                    new_genres[genre['genre']] = new_genre
+    if len(new_genres):
+        txt = 'MU\n'
+        for ag, g in new_genres.items():
+            txt += f'{ag}: {g}\n'
+        with open('new_genres.txt', 'a', encoding='utf8') as file:
+            file.write(txt)
+        print('Перенесите новые жанры в «config.py» из «new_genres.txt».')
+    return result
+
+
+def poster(mu_json: json.JSONEncoder) -> str | None:
+    """
+    Извлечение ссылки на постер из полного JSON-словаря данных по манге в MU.
+    :param mu_json: Данные по манге в MU в JSON-формате.
+    :return: Ссылка на постер в MU либо None.
+    """
+    return mu_json['image']['url']['original'] if 'image' in mu_json else None
+
+
+def extraction_manga(mu_json: json.JSONEncoder
+                     ) -> dict[str, str | dict[int, dict[str, str]] | int | dict[str, str] | list[str]]:
+    """
+    Извлечение данных по манге из полного JSON-словаря данных по манге в MU.
+    :param mu_json: Данные по манге в MU в JSON-формате.
+    :return: Словарь данных по манги в MU.
+    """
+    nv = volumes(mu_json)
+    if nv < 0:
+        nc = -nv
+        nv = 1
     else:
-        db.save_poster(url, mid, 1)
+        nc = nv
+    res = {
+        'name_orig': select_title(mu_json, 'orig'),
+        'name_rom': title_rom(mu_json),
+        'name_eng': select_title(mu_json, 'eng'),
+        'name_rus': select_title(mu_json, 'rus'),
+        'author_of_manga': authors_of_manga(mu_json),
+        'number_of_volumes': nv,
+        'number_of_chapters': nc,
+        'date_of_premiere': date(mu_json),
+        'publication': publications(mu_json),
+        'genre': genres(mu_json),
+        'poster': poster(mu_json)
+    }
+    if not res['name_orig']:
+        res['name_orig'] = res['name_rom']
+    return res

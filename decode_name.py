@@ -1,5 +1,5 @@
 """
-Функции декодирования символов Юникод или их замены.
+Функции декодирования символов Юникод или их замены, а так же преобразования даты и времени (продолжительности).
 """
 import re
 import dateutil.parser as date_parser
@@ -21,7 +21,8 @@ def normal_name(name: str) -> str:
     :param name: Наименование.
     :return: Нормализованное наименование.
     """
-    name = name.lower().replace('ō', 'ou').replace('ū', 'uu').replace('×', 'x')
+    name = (name.lower().replace('ō', 'ou').replace('ū', 'uu').replace('×', 'x')
+            .replace('_', ' ').replace('ö', 'o').strip())
     chars = 'abcdefghijklmnopqrstuvwxyz 0123456789'
     name2 = ''
     for i in range(len(name)):
@@ -55,3 +56,30 @@ def month(date: str) -> str:
     date = datetime.date(date.year + (date.month == 12), (date.month + 1 if date.month < 12 else 1),
                          1) - datetime.timedelta(1)
     return date.strftime('%Y-%m-%d')
+
+
+def title_index(dict_: dict, title: str, index: int = 1) -> str:
+    """
+    Добавление индекса к строке (наименованию), если строка имеется в словаре как ключ.
+    Проверка рекурсивная до определения свободного индекса.
+    :param dict_: Словарь для сверки строки с ключами.
+    :param title: Строка (наименование).
+    :param index: Индекс.
+    :return: Строка с индексом.
+    """
+    ttl = f'{title} ({index})' if index > 1 else title
+    return title_index(dict_, title, index + 1) if ttl in dict_ else ttl
+
+
+def hours_minutes(minutes: int) -> str:
+    """
+    Конвертирование числа минут в строку формата hh:mm.
+    :param minutes: Число минут.
+    :return: Строка формата hh:mm.
+    """
+    hours = 0
+    if minutes > 59:
+        hours = minutes // 60
+        minutes = minutes - 60 * hours
+    res = datetime.time(hours, minutes)
+    return res.isoformat('minutes')

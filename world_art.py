@@ -1,406 +1,40 @@
 """
-Поиск страниц на World Art и их обработка.
+Поиск страниц в World Art (далее — WA) и их обработка.
 """
 import requests
 from time import sleep
-import re
-from datetime import time
 
-from decode_name import points_codes
+from decode_name import points_codes, decode_name, hours_minutes
 from constants import *
-from config import *
-from decode_name import decode_name
-import animenewsnetwork as ann
-import db
+from config import COOKIES_WA, IGNORED_GENRES
 
 
-# === Anime ===
-def search_anime(search: str, form: str, year: int) -> str | None:
+def html(id_: int, am: bool = False, url: str | None = None) -> str:
     """
-    Поиск страницы anime на World Art.
-    :param search: Искомое наименование.
-    :param form: Формат.
-    :param year: Год.
-    :return: Страница (HTML-код), если найдена. Иначе — None.
+    Получение HTML-кода страницы в WA.
+    :param id_: ID в URI-параметрах.
+    :param am: Переключатель: anime/манга (0/1 | False/True).
+    :param url: URL раздела WA.
+    :return: HTML-код страницы в WA.
     """
-    search_ = points_codes(search)
-    data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
-                        params={'public_search': search_, 'global_sector': A}).text
-    aid = 0
-    if data.find("<meta http-equiv='Refresh'") != -1:
-        aid = int(data[data.find('?id=') + 4:-2])
-    else:
-        posa = 0
-        ls = len(search_)
-        wb = False
-        str_sub = f'<a href = "{A}/{A}.php?id='
-        lss = len(str_sub)
-        while True:
-            posa = data.find(str_sub, posa) + lss
-            if posa == lss - 1:
-                break
-            pos = posa
-            postd = data.find('</td>', pos)
-            while True:
-                pos = data.find(search_, pos, postd)
-                if pos == -1:
-                    break
-                pos1 = pos + ls
-                if (data[pos1:pos1 + 7] == '&nbsp;(' or data[pos1:pos1 + 4] == '<br>') and data[pos - 1:pos] == '>':
-                    posf1 = data.find(', Япония, ', posa) + 10
-                    posf2 = data.find(',', posf1)
-                    if posf2 == -1:
-                        posf2 = data.find(')', posf1)
-                    if form in data[posf1:posf2] and str(year) in data[posf1 - 14:posf1 - 10]:
-                        wb = True
-                        break
-                pos = pos1
-            if wb:
-                break
-    if aid == 0 and posa in (33, 37):
-        with open('report.csv', 'a', encoding='utf8') as file:
-            file.write(
-                f'"{search}","Ошибка. Возможно искомое наименование отредактировано и теперь не совпадает."\n'
-            )
-        return None
-    elif aid == 0:
-        aid = int(data[posa:data.find('" ', posa)])
+    if not url:
+        url = WAAM if am else WAAA
     sleep(1)
-    return requests.get(WAAA, {'id': aid}, cookies=COOKIES_WA).text
+    return requests.get(url, {'id': id_}, cookies=COOKIES_WA).text
 
 
-# === Manga ===
-def search_manga_in_anime_page(page: str) -> str | None:
+def anime_pages(aid: int) -> dict[int, str]:
     """
-    Поиск манги, связанной с anime на World Art.
-    :param page: Страница anime на World Art (HTML-код, возвращённый search_anime).
-    :return: Страница манги на World Art (HTML-код).
+    Поиск продолжений anime в WA и формирование словаря страниц.
+    :param aid: ID anime в WA.
+    :return: Словарь страниц в WA.
     """
-    pos = page.find('<b>Снято по манге</b>')
-    if pos == -1:
-        return None
-    pos = page.find(WAAM, pos) + 47
-    mid = int(page[pos:page.find('" ', pos)])
-    sleep(1)
-    return requests.get(WAAM, {'id': mid}, cookies=COOKIES_WA).text
-
-
-def manga_pages(page: str) -> list:
-    """
-    Поиск продолжений манги на World Art и формирования списка страниц.
-    :param page: Страница манги на World Art (HTML-код, возвращённый search_manga_in_anime_page).
-    :return: Список страниц.
-    """
-    pos1 = page.find("<link rel='canonical' href='") + 75
-    mid = int(page[pos1:page.find("' />", pos1)])
-    pos1 = page.find('<font size=2 color=#000000>Эта серия состоит из</font>', pos1)
+    page = html(aid)
+    pos1 = page.find('<font size=2>Информация о серии</font>')
     if pos1 == -1:
-        return [page]
+        return {aid: page}
     i = 1
-    res = []
-    while True:
-        pos1 = page.find(f'<td Valign=top> <b>#{i}&nbsp;</b></td>', pos1)
-        if pos1 == -1:
-            break
-        if i == 1:
-            pos2 = page.find('</table', pos1)
-        pos1 = page.find(f'<a href = "{M}.php?id=', pos1, pos2) + 24
-        nid = int(page[pos1:page.find('" ', pos1, pos2)])
-        # if nid in (mid, ):
-        #     i += 1
-        #     continue
-        if nid == mid:
-            res.append(page)
-        else:
-            sleep(1)
-            res.append(requests.get(WAAM, {'id': nid}, cookies=COOKIES_WA).text)
-        i += 1
-    if len(res):
-        return res
-    return [page]
-
-
-def manga_in_ann(page: str, ann_pages: dict) -> tuple[str | bool, dict]:
-    """
-    Страница манги в ANN по ID из World Art.
-    :param page: Страница манги на World Art (HTML-код).
-    :param ann_pages: Словарь ANN-страниц манги ann_pages = {ann_id: обработана?}.
-    :return: Кортеж: XML-страница манги на ANN, если есть ссылка, или False;
-        и редактированный словарь ANN-страниц манги ann_pages.
-    """
-    pos1 = page.find('<b>Сайты</b>')
-    pos2 = page.find('</table>', pos1)
-    pos1 = page.find(f'{ANNE}{M}.php', pos1, pos2) + 58
-    if pos1 == 57:
-        return False, ann_pages
-    mid = int(page[pos1:page.find("' ", pos1, pos2)])
-    ann_pages[mid] = True  # Отметка об обработке страницы.
-    return ann.xml({M: mid}), ann_pages
-
-
-# def manga_in_wp(page: str) -> str | bool:
-#     """
-#     Страница манги в Wikipedia по ссылке из World Art.
-#     :param page: Страница манги на World Art (HTML-код).
-#     :return: Страница манги в Wikipedia, если найдена ссылка. Иначе — False.
-#     """
-#     pos1 = page.find('<b>Вики</b>')
-#     pos2 = page.find('</table>', pos1)
-#     pos = page.find('https://en.wikipedia.org/', pos1, pos2)
-#     if pos == -1:
-#         pos = page.find('http://en.wikipedia.org/', pos1, pos2)
-#         if pos == -1:
-#             return False
-#     url = page[pos:page.find('" ', pos, pos2)]
-#     sleep(1)
-#     return requests.get(url).text
-
-
-def put_people(pid: int, type_people: str) -> int:
-    """
-    Извлечение имён персоны из WA, добавление в БД и возврат ID.
-    :param pid: ID персоны в WA.
-    :param type_people: Тип персоны (специализация) из списка: ["AuthorOfManga", "Director"].
-    :return: ID персоны в БД.
-    """
-    sleep(1)
-    page = requests.get(f'{WA}people.php', {'id': pid}, cookies=COOKIES_WA).text
-    pos1 = page.find('<font size=5>') + 13
-    pos2 = page.find('</font>', pos1)
-    data = {'narus': page[pos1:pos2]}
-    pos1 = page.find('<b>Имя по-английски</b>', pos2)
-    pos1 = page.find("class='review'>", pos1) + 15
-    pos2 = page.find('</td>', pos1)
-    data['narom'] = page[pos1:pos2]
-    pos1 = page.find('<b>Оригинальное имя</b>', pos2)
-    if pos1 != -1:
-        pos1 = page.find("class='review'>", pos1) + 15
-        pos2 = page.find('</td>', pos1)
-        data['naori'] = decode_name(page[pos1:pos2])
-    else:
-        data['naori'] = data['narom']
-    return db.put(type_people, data)
-
-
-def authors_of_manga_id(page: str, oam: str) -> list:
-    """
-    Поиск ID соответствующих авторов манги из WA в БД.
-    :param page: World Art страница (HTML-код).
-    :param oam: Страница веб-приложения интерфейса БД (HTML-код).
-    :return: Список ID авторов манги в БД.
-    """
-    pos1 = page.find('<b>Авторы</b>')
-    pos2 = page.find('</table>', pos1)
-    wa_authors = []
-    i = 0
-    while True:
-        pos1 = page.find('/people.php?id=', pos1, pos2) + 15
-        if pos1 == 14:
-            break
-        pos = page.find(" class='review'>", pos1, pos2) - 1
-        wa_authors.append({'id': int(page[pos1:pos]), 'exist': False})
-        pos1 = pos + 17
-        wa_authors[i]['name'] = page[pos1:page.find('</a>', pos1, pos2)]
-        i += 1
-    pos1 = oam.find('<select name="maaum[]"')
-    pos2 = oam.find('</select>', pos1)
-    o_authors = re.findall(r'<option value="(.*?)">.*? / .*? / (.*?)</option>', oam[pos1:pos2])
-    result = []
-    for i in range(len(wa_authors)):
-        for author in o_authors:
-            if author[1] == wa_authors[i]['name']:
-                result.append(int(author[0]))
-                wa_authors[i]['exist'] = True
-                break
-    if len(result) < len(wa_authors):
-        for wa_author in wa_authors:
-            if not wa_author['exist']:
-                result.append(put_people(wa_author['id'], 'AuthorOfManga'))
-    return result
-
-
-def put_publication(publication: dict) -> int:
-    """
-    Добавление издания в БД из World Art и возврат ID.
-    :param publication: Издание.
-    :return: ID издания в БД.
-    """
-    sleep(1)
-    page = requests.get(f'{WA}company.php', {'id': publication['id']}, cookies=COOKIES_WA).text
-    pos1 = page.find(f'<b>{publication['name']}</b>')
-    pos2 = page.find('<b>Сериализация</b>', pos1)
-    pos1 = page.find('company.php', pos1, pos2)
-    pos1 = page.find("class='review'>", pos1, pos2) + 15
-    publishing = page[pos1:page.find('</a>', pos1, pos2)]
-    return db.put_publication({'name': publication['name'], 'type': 1, 'publishing': publishing})
-
-
-def publications_id(page: str, oam: str) -> list[int]:
-    """
-    Поиск ID соответствующих изданий из WA в БД.
-    :param page: World Art страница (HTML-код).
-    :param oam: Страница веб-приложения интерфейса БД (HTML-код).
-    :return: Список ID изданий в БД.
-    """
-    pos1 = page.find('<b>Сериализация</b>')
-    pose = page.find('</table>', pos1)
-    publications = []
-    i = 0
-    while True:
-        pos1 = page.find('/company.php?id=', pos1, pose) + 16
-        if pos1 == 15:
-            break
-        pos2 = page.find("' class='review'>", pos1, pose)
-        publications.append({'id': int(page[pos1:pos2]), 'exist': False})
-        pos1 = pos2 + 17
-        publications[i]['name'] = page[pos1:page.find('</a>', pos1)]
-        i += 1
-    return db.publications_id(oam, publications, put_publication)
-
-
-def genres_id(wa_page: str, o_page: str) -> list:
-    """
-    Поиск ID соответствующих жанров из WA в БД.
-    :param wa_page: World Art страница (HTML-код).
-    :param o_page: Страница веб-приложения интерфейса БД (HTML-код).
-    :return: Список ID жанров в БД.
-    """
-    # wa_genres = re.findall(
-    #     r"<a href='http://www\.world-art\.ru/animation/list\.php\?public_genre=\d+' class='review'>(.*?)</a>",
-    #     wa_page
-    # )
-    pos_w1 = wa_page.find('<b>Жанр</b>')
-    pos_w2 = wa_page.find('</table>', pos_w1)
-    pos_w1 = wa_page.find("class='review'>", pos_w1, pos_w2) + 15
-    result = []
-    while pos_w1 > 14:
-        genre = wa_page[pos_w1:wa_page.find('</a>', pos_w1, pos_w2)]
-        if genre not in IGNORED_GENRES:
-            pos_o2 = o_page.find(f'">{genre}</option>')
-            pos_o1 = o_page.find('="', pos_o2 - 5) + 2
-            result.append(int(o_page[pos_o1:pos_o2]))
-        pos_w1 = wa_page.find("class='review'>", pos_w1, pos_w2) + 15
-    return result
-
-
-def name_rus(wa_page: str) -> str:
-    """
-    Извлечение наименования на русском из WA.
-    :param wa_page: World Art страница (HTML-код).
-    :return: Наименование на русском.
-    """
-    pos1 = wa_page.find('<font size=5>') + 13
-    pos2 = wa_page.find('</font>', pos1)
-    return decode_name(wa_page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
-
-
-def name_orig(wa_page: str, am: int | bool = 0) -> str:
-    """
-    Извлечение оригинального наименования из WA.
-    :param wa_page: World Art страница (HTML-код).
-    :param am: Переключатель: anime/манга (0/1).
-    :return: Оригинальное наименование.
-    """
-    pos1 = wa_page.find(f'<b>Названи{'я' if am else 'е'} (кандзи)</b>')
-    if pos1 == -1:
-        pos1 = wa_page.find('<b>Названия (прочие)</b>')
-        if pos1 == -1:
-            pos1 = wa_page.find('<b>Названия (яп.)</b>')
-    if pos1 != -1:
-        pos1 = wa_page.find('Valign=top>', pos1) + 11
-        pos2 = wa_page.find('</td>', pos1)
-        return decode_name(wa_page[pos1:pos2])
-    return name_rus(wa_page)
-
-
-def name_rom(wa_page: str, am: int | bool = 0) -> str:
-    """
-    Извлечение наименования на ромадзи из WA.
-    :param wa_page: World Art страница (HTML-код).
-    :param am: Переключатель: anime/манга (0/1).
-    :return: Наименование на ромадзи.
-    """
-    pos1 = wa_page.find(f'<b>Названи{'я (яп.' if am else 'е (ромадзи'})</b>')
-    if pos1 == -1:
-        pos1 = wa_page.find('<font size=5>') + 13
-        pos2 = wa_page.find('</font>', pos1)
-    else:
-        pos1 = wa_page.find('Valign=top>', pos1) + 11
-        pos2 = wa_page.find('</td>', pos1)
-    return decode_name(wa_page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
-
-
-def name_eng(wa_page: str, am: int | bool = 0) -> str:
-    """
-    Извлечение наименования на английском из WA.
-    :param wa_page: World Art страница (HTML-код).
-    :param am: Переключатель: anime/манга (0/1).
-    :return: Наименование на английском.
-    """
-    pos1 = wa_page.find(f'<b>Названи{'я' if am else 'е'} (англ.)</b>')
-    if pos1 == -1:
-        return ''
-    pos1 = wa_page.find('Valign=top>', pos1) + 11
-    pos2 = wa_page.find('</td>', pos1)
-    return decode_name(wa_page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
-
-
-def manga_name_r(wa_name_r, *args) -> str:
-    """
-    Удаление в названии окончания « (манга)».
-    :param wa_name_r: Функция name_rom или name_rus.
-    :return: Исправленное название.
-    """
-    wa_name = wa_name_r(*args)
-    pos = wa_name.find(' (манга)')
-    if pos == -1:
-        return wa_name
-    return wa_name[:pos]
-
-
-def id_manga_in_mu(page: str) -> int | bool:
-    """
-    Поиск ID манги в MangaUpdates по ссылке из World Art.
-    :param page: Страница манги на World Art (HTML-код).
-    :return: ID манги в MangaUpdates, если найдена ссылка. Иначе — False.
-    """
-    pos = page.find(WMU) + 43
-    if pos == 42:
-        return False
-    pos2 = page.find("' ", pos)
-    sleep(1)
-    page = requests.get(WMU, {'id': page[pos:pos2]}).text
-    pos = page.find('"identifier":') + 13
-    pos2 = page.find(',', pos)
-    return int(page[pos:pos2])
-
-
-def date_of_premiere_manga(wa_page: str) -> str:
-    """
-    Поиск даты премьеры (года выпуска) манги на World Art.
-    :param wa_page: Страница на World Art (HTML-код).
-    :return: Дата премьеры манги в формате гггг-мм-чч.
-    """
-    pos1 = wa_page.find('<b>Год выпуска</b>')
-    pose = wa_page.find('</table>', pos1)
-    pos1 = wa_page.find('Valign=top>', pos1, pose) + 11
-    return wa_page[pos1:wa_page.find('</td>', pos1, pose)] + '-12-31'
-
-
-# === Anime ===
-def anime_pages(page: str) -> list:
-    """
-    Поиск продолжений anime на World Art и формирования списка страниц.
-    :param page: Страница anime на World Art (HTML-код, возвращённый search_anime).
-    :return: Список страниц.
-    """
-    pos1 = page.find("<link rel='canonical' href='") + 79
-    aid = int(page[pos1:page.find("' />", pos1)])
-    pos1 = page.find('<font size=2>Информация о серии</font>', pos1)
-    if pos1 == -1:
-        return [page]
-    i = 1
-    res = []
+    res = {}
     while True:
         pos1 = page.find(f'<td Valign=top width=20> <b>#{i}&nbsp;</b></td>', pos1)
         if pos1 == -1:
@@ -409,92 +43,671 @@ def anime_pages(page: str) -> list:
             pos2 = page.find('</table', pos1)
         pos1 = page.find(f'<a href = "{WAAA}?id=', pos1, pos2) + 62
         nid = int(page[pos1:page.find('" ', pos1, pos2)])
-        # if nid in (aid, ):
-        #     i += 1
-        #     continue
-        if nid == aid:
-            res.append(page)
-        else:
-            sleep(1)
-            res.append(requests.get(WAAA, {'id': nid}, cookies=COOKIES_WA).text)
+        res[nid] = page if nid == aid else html(nid)
         i += 1
     if len(res):
         return res
-    return [page]
+    return {aid: page}
 
 
-def format_id(wa_page: str, o_page: str) -> int:
+def report(search: str, am: bool = False) -> None:
     """
-    Поиск ID соответствующего формата из WA в БД.
-    :param wa_page: World Art страница (HTML-код).
-    :param o_page: Страница веб-приложения интерфейса БД (HTML-код).
-    :return: ID формата в БД.
+    Запись в report.csv строки с искомым наименованием.
+    :param search: Искомое наименование.
+    :param am: Переключатель: anime/манга (0/1 | False/True).
     """
-    pos1 = wa_page.find('<b>Тип</b>') + 63
-    pos2 = wa_page.find('</table>', pos1)
-    pos = wa_page.find(' (', pos1, pos2)
+    with open('report.csv', 'a', encoding='utf8') as file:
+        file.write(
+            f'{M if am else A},"{search}",'
+            '"Ошибка. Возможно искомое наименование отредактировано и теперь не совпадает."\n'
+        )
+
+
+def search_anime(search: str, year: int, form: str) -> dict[int, str] | None:
+    """
+    Поиск anime в WA.
+    :param search: Наименование anime.
+    :param year: Год премьеры.
+    :param form: Формат.
+    :return: Словарь страниц anime в WA либо None.
+    """
+    search_ = points_codes(search)
+    data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
+                        params={'public_search': search_, 'global_sector': AN}).text
+    aid = 0
+    if data.find("<meta http-equiv='Refresh'") != -1:
+        aid = int(data[data.find('?id=') + 4:-2])
+    else:
+        posa = 0
+        ls = len(search_)
+        wb = False
+        str_sub = f'<a href = "{AN}/{AN}.php?id='
+        lss = len(str_sub)
+        if form:
+            while not wb:
+                posa = data.find(str_sub, posa) + lss
+                if posa == lss - 1:
+                    report(search)
+                    return
+                pos = posa
+                postd = data.find('</td>', pos)
+                while True:
+                    pos = data.find(search_, pos, postd)
+                    if pos == -1:
+                        break
+                    pos1 = pos + ls
+                    if (data[pos1:pos1 + 7] == '&nbsp;(' or data[pos1:pos1 + 4] == '<br>') and data[pos - 1:pos] == '>':
+                        posf1 = data.find(', Япония, ', posa) + 10
+                        posf2 = data.find(',', posf1)
+                        if posf2 == -1:
+                            posf2 = data.find(')', posf1)
+                        if form in data[posf1:posf2] and str(year) in data[posf1 - 14:posf1 - 10]:
+                            wb = True
+                            break
+                    pos = pos1
+        else:
+            animes = []
+            while True:
+                posa = data.find(str_sub, posa) + lss
+                if posa == lss - 1:
+                    break
+                aid = int(data[posa:data.find('" ', posa)])
+                postd = data.find('</td>', posa)
+                posa = data.find("class='review'>", posa, postd) + 15
+                names = data[posa:postd].replace('</a>', '').replace('<br>', '\n')
+                animes.append((aid, names))
+                posa = postd
+            animes = animes[::-1]
+            text = '\n0. *** Подходящего варианта нет ***'
+            for i, anime in enumerate(animes):
+                text += f'\n{i + 1}. {anime[1]}'
+            print(f'Укажите номер anime, подходящего под искомое наименование «{search}»:{text}')
+            while True:
+                num = input('Укажите номер: ')
+                if num.isdigit():
+                    break
+                print('Ошибка! Требуется ввести целое число.')
+            num = int(num)
+            if not num:
+                return
+            aid = animes[num - 1][0]
+    if not aid:
+        aid = int(data[posa:data.find('" ', posa)])
+    return anime_pages(aid)
+
+
+def manga_pages(mid: int) -> dict[int, str]:
+    """
+    Поиск продолжений манги в WA и формирование словаря страниц.
+    :param mid: Страница манги в WA (HTML-код, возвращённый search_manga_in_anime_page).
+    :return: Словарь страниц манги в WA.
+    """
+    page = html(mid, True)
+    pos1 = page.find('<font size=2 color=#000000>Эта серия состоит из</font>')
+    if pos1 == -1:
+        return {mid: page}
+    i = 1
+    res = {}
+    while True:
+        pos1 = page.find(f'<td Valign=top> <b>#{i}&nbsp;</b></td>', pos1)
+        if pos1 == -1:
+            break
+        if i == 1:
+            pos2 = page.find('</table', pos1)
+        pos1 = page.find(f'<a href = "{M}.php?id=', pos1, pos2) + 24
+        nid = int(page[pos1:page.find('" ', pos1, pos2)])
+        res[nid] = page if nid == mid else html(nid, True)
+        i += 1
+    if len(res):
+        return res
+    return {mid: page}
+
+
+def search_manga(search: str, year: int) -> dict[int, str] | None:
+    """
+    Поиск манги в WA.
+    :param search: Наименование манги.
+    :param year: Год премьеры.
+    :return: Словарь страниц манги в WA.
+    """
+    search_ = points_codes(search)
+    data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
+                        params={'public_search': search_, 'global_sector': M}).text
+    mid = 0
+    if data.find("<meta http-equiv='Refresh'") != -1:
+        mid = int(data[data.find('?id=') + 4:-2])
+    else:
+        posa = 0
+        ls = len(search_)
+        wb = False
+        str_sub = f'<a href = "{AN}/{M}.php?id='
+        lss = len(str_sub)
+        while not wb:
+            posa = data.find(str_sub, posa) + lss
+            if posa == lss - 1:
+                report(search, True)
+                return
+            pos = posa
+            postd = data.find('</td>', pos)
+            while True:
+                pos = data.find(search_, pos, postd)
+                if pos == -1:
+                    break
+                pos1 = pos + ls
+                if (data[pos1:pos1 + 7] == '&nbsp;(' or data[pos1:pos1 + 4] == '<br>') and data[pos - 1:pos] == '>':
+                    pos1 = data.find('</a>', posa) - 5
+                    if str(year) in data[pos1:pos1 + 4]:
+                        wb = True
+                        break
+                pos = pos1
+    if not mid:
+        mid = int(data[posa:data.find('" ', posa)])
+    return manga_pages(mid)
+
+
+def manga_pages_from_anime(wa_manga_pages: dict[int, str] | None, wa_anime_pages: dict[int, str] | None
+                           ) -> tuple[dict[int, str], dict[int, int]]:
+    """
+    Поиск связанной с anime манги и добавление её в словарь страниц манги в WA.
+    А также составление словаря связей anime с мангой.
+    :param wa_manga_pages: Словарь страниц манги в WA.
+    :param wa_anime_pages: Словарь страниц anime в WA.
+    :return: Кортеж: обновлённый словарь страниц манги в WA и словарь связей anime с мангой.
+    """
+    def related_manga(mid: int) -> None:
+        """
+        Добавление манги в словарь страниц манги в WA.
+        :param mid: ID манги в WA.
+        """
+        nonlocal wa_manga_pages
+        manga = html(mid, True)
+        if not wa_manga_pages:
+            wa_manga_pages = {}
+        wa_manga_pages[mid] = manga
+        pos = manga.find('<font size=2 color=#000000>Эта серия состоит из</font>')
+        if pos == -1:
+            return
+        i = 1
+        while True:
+            pos = manga.find(f'<td Valign=top> <b>#{i}&nbsp;</b></td>', pos)
+            if pos == -1:
+                break
+            if i == 1:
+                pos2 = manga.find('</table', pos)
+            pos = manga.find(f'<a href = "{M}.php?id=', pos, pos2) + 24
+            nid = int(manga[pos:manga.find('" ', pos, pos2)])
+            if nid not in wa_manga_pages:
+                related_manga(nid)
+            i += 1
+
+    rm = {}
+    for aid, anime in wa_anime_pages.items():
+        pos = anime.find('<b>Снято по манге</b>')
+        if pos == -1:
+            continue
+        pos = anime.find(WAAM, pos) + 47
+        mid = int(anime[pos:anime.find('" ', pos)])
+        if not wa_manga_pages or mid not in wa_manga_pages:
+            related_manga(mid)
+        rm[aid] = mid
+    return wa_manga_pages, rm
+
+
+def related_anime(wa_anime_pages: dict[int, str], aid: int) -> dict[int, str]:
+    """
+    Поиск связанного anime в WA и добавление его в словарь страниц anime в WA.
+    :param wa_anime_pages: Словарь страниц anime в WA.
+    :param aid: ID anime в WA.
+    :return: Обновлённый словарь страниц anime в WA.
+    """
+    anime = html(aid)
+    wa_anime_pages[aid] = anime
+    pos = anime.find('<font size=2>Информация о серии</font>')
     if pos == -1:
-        pos = wa_page.find(',', pos1, pos2)
-    result = wa_page[pos1:pos]
-    pos2 = o_page.find(f'">{result}</option>')
-    if pos2 == -1:
-        return db.put('Format', {'name_f': result})
-    pos1 = o_page.find('="', pos2 - 4) + 2
-    return int(o_page[pos1:pos2])
+        return wa_anime_pages
+    i = 1
+    while True:
+        pos = anime.find(f'<td Valign=top width=20> <b>#{i}&nbsp;</b></td>', pos)
+        if pos == -1:
+            break
+        if i == 1:
+            pos2 = anime.find('</table', pos)
+        pos = anime.find(f'<a href = "{WAAA}?id=', pos, pos2) + 62
+        nid = int(anime[pos:anime.find('" ', pos, pos2)])
+        if nid not in wa_anime_pages:
+            wa_anime_pages = related_anime(wa_anime_pages, nid)
+        i += 1
 
 
-def studios_id(wa_page: str, o_page: str) -> list:
+def anime_id_from_manga(page: str) -> list[int | None]:
     """
-    Поиск ID соответствующих студий из WA в БД.
-    :param wa_page: World Art страница (HTML-код).
-    :param o_page: Страница веб-приложения интерфейса БД (HTML-код).
-    :return: Список ID студий в БД.
+    Извлечение ID anime в WA из страницы манги в WA и формирование списка.
+    :param page: Страница манги (HTML-код) в WA.
+    :return: Список ID anime в WA.
     """
-    url = f'{WAA}{A}_full_production.php'
-    pos_w1 = wa_page.find('<b>Основное</b>') + 15
-    pos_w1 = wa_page.find(url, pos_w1) + 67
+    pos = page.find('<b><font size=2 color=#000000>По этой манге снято аниме</font></b>')
+    if pos == -1:
+        return []
+    ids = []
+    pos = page.find(AN + '.php', pos) + 17
+    while pos > 16:
+        ids.append(int(page[pos:page.find('" ', pos)]))
+        pos = page.find(AN + '.php', pos) + 17
+    return ids
+
+
+def anime_pages_from_manga(wa_anime_pages: dict[int, str], wa_manga_pages: dict[int, str]) -> dict[int, str]:
+    """
+    Добавление anime, связанных с мангой из словаря страниц манги в WA, в словарь страниц anime в WA.
+    :param wa_anime_pages: Словарь страниц anime в WA.
+    :param wa_manga_pages: Словарь страниц манги в WA.
+    :return: Обновлённый словарь страниц anime в WA.
+    """
+    for manga in wa_manga_pages.values():
+        aids = anime_id_from_manga(manga)
+        if len(aids):
+            for aid in aids:
+                if aid not in wa_anime_pages:
+                    wa_anime_pages = related_anime(wa_anime_pages, aid)
+    return wa_anime_pages
+
+
+def ann_anime_id(wa_page: str) -> int | None:
+    """
+    Извлечение ID anime в ANN по ссылке в WA.
+    :param wa_page: Страница anime (HTML-код) в WA.
+    :return: ID anime в ANN, если найдена ссылка в WA. Иначе — None.
+    """
+    pos1 = wa_page.find('<b>Сайты</b>')
+    pos1 = wa_page.find('&nbsp;- <noindex>', pos1)
+    pos2 = wa_page.find('<table ', pos1)
+    pos1 = wa_page.find(f'{SANNE}{A}.php', pos1, pos2) + 59
+    if pos1 == 58:
+        return
+    return int(wa_page[pos1:wa_page.find("' ", pos1, pos2)])
+
+
+def ann_manga_id(wa_page: str) -> int | None:
+    """
+    Извлечение ID манги в ANN по ссылке в WA.
+    :param wa_page: Страница манги (HTML-код) в WA.
+    :return: ID манги в ANN, если найдена ссылка в WA. Иначе — None.
+    """
+    pos1 = wa_page.find('<b>Сайты</b>')
+    pos2 = wa_page.find('</table>', pos1)
+    pos1 = wa_page.find(f'{ANNE}{M}.php', pos1, pos2) + 58
+    if pos1 == 57:
+        return
+    return int(wa_page[pos1:wa_page.find("' ", pos1, pos2)])
+
+
+def wp_title(wa_page: str) -> str | None:
+    """
+    Извлечение заголовка в WP по ссылке в WA.
+    :param wa_page: Страница (HTML-код) в WA.
+    :return: Заголовок в WP, если найдена ссылка в WA. Иначе — None.
+    """
+    from urllib.parse import unquote
+
+    pos1 = wa_page.find('<b>Википедия</b>')
+    pos1 = wa_page.find('&nbsp;- <noindex>', pos1)
+    pos2 = wa_page.find('<table ', pos1)
+    pos1 = wa_page.find(WPE, pos1, pos2) + 29
+    if pos1 == 28:
+        return
+    return unquote(wa_page[pos1:wa_page.find("' ", pos1, pos2)])
+
+
+def mu_manga_id(wa_page: str) -> int | None:
+    """
+    Поиск ID манги в MU по ссылке в WA.
+    :param wa_page: Страница манги (HTML-код) в WA.
+    :return: ID манги в MU, если найдена ссылка в WA. Иначе — None.
+    """
+    pos = wa_page.find(WMU) + 43
+    if pos == 42:
+        return
+    pos2 = wa_page.find("' ", pos)
+    sleep(1)
+    page = requests.get(WMU, {'id': wa_page[pos:pos2]}).text
+    pos = page.find('"identifier":') + 13
+    pos2 = page.find(',', pos)
+    return int(page[pos:pos2])
+
+
+def title_rom(page: str, am: bool = False) -> str:
+    """
+    Извлечение ромадзи наименования из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :param am: Переключатель: anime/манга (False/True).
+    :return: Ромадзи наименование в WA.
+    """
+    pos1 = page.find(f'<b>Названи{'я (яп.' if am else 'е (ромадзи'})</b>')
+    if pos1 == -1:
+        pos1 = page.find('<font size=5>') + 13
+        pos2 = page.find('</font>', pos1)
+    else:
+        pos1 = page.find('Valign=top>', pos1) + 11
+        pos2 = page.find('</td>', pos1)
+    return decode_name(page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
+
+
+def manga_date_of_premiere(page: str, full_format: bool = True) -> str:
+    """
+    Извлечение даты премьеры манги из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :param full_format: Флаг полного формата даты (гггг.мм.дд). Если False, то только год (гггг).
+    :return: Дата премьеры манги в WA.
+    """
+    pos1 = page.find('<b>Год выпуска</b>')
+    pose = page.find('</table>', pos1)
+    pos1 = page.find('Valign=top>', pos1, pose) + 11
+    return page[pos1:page.find('</td>', pos1, pose)] + ('-12-31' if full_format else '')
+
+
+def title_rus(page: str) -> str:
+    """
+    Извлечение русского наименования из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Русское наименование в WA.
+    """
+    pos1 = page.find('<font size=5>') + 13
+    pos2 = page.find('</font>', pos1)
+    return decode_name(page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
+
+
+def title_orig(page: str, am: bool = False) -> str:
+    """
+    Извлечение оригинального наименования из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :param am: Переключатель: anime/манга (False/True).
+    :return: Оригинальное наименование в WA.
+    """
+    pos1 = page.find(f'<b>Названи{'я' if am else 'е'} (кандзи)</b>')
+    if pos1 == -1:
+        pos1 = page.find('<b>Названия (прочие)</b>')
+        if pos1 == -1:
+            pos1 = page.find('<b>Названия (яп.)</b>')
+    if pos1 != -1:
+        pos1 = page.find('Valign=top>', pos1) + 11
+        pos2 = page.find('</td>', pos1)
+        return decode_name(page[pos1:pos2])
+    return title_rus(page)
+
+
+def manga_title_r(func, *args) -> str:
+    """
+    Удаление в наименовании окончания « (манга)».
+    :param func: Функция title_rom или title_rus.
+    :param args: аргументы функций title_rom или title_rus.
+    :return: Исправленное наименование.
+    """
+    manga_title = func(*args)
+    return manga_title.removesuffix(' (манга)')
+
+
+def title_eng(page: str, am: bool = False) -> str:
+    """
+    Извлечение английского наименования из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :param am: Переключатель: anime/манга (False/True).
+    :return: Английское наименование в WA.
+    """
+    pos1 = page.find(f'<b>Названи{'я' if am else 'е'} (англ.)</b>')
+    if pos1 == -1:
+        return ''
+    pos1 = page.find('Valign=top>', pos1) + 11
+    pos2 = page.find('</td>', pos1)
+    return decode_name(page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
+
+
+def people(pid: int) -> dict[str, str]:
+    """
+    Извлечение имён персоны из страницы в WA.
+    :param pid: ID персоны в WA.
+    :return: Словарь имён персоны в WA.
+    """
+    page = html(pid, url=f'{WA}people.php')
+    pos1 = page.find('<font size=5>') + 13
+    pos2 = page.find('</font>', pos1)
+    data = {'name_rus': page[pos1:pos2]}
+    pos1 = page.find('<b>Имя по-английски</b>', pos2)
+    pos1 = page.find("class='review'>", pos1) + 15
+    pos2 = page.find('</td>', pos1)
+    data['name_rom'] = page[pos1:pos2]
+    pos1 = page.find('<b>Оригинальное имя</b>', pos2)
+    if pos1 != -1:
+        pos1 = page.find("class='review'>", pos1) + 15
+        pos2 = page.find('</td>', pos1)
+        data['name_orig'] = decode_name(page[pos1:pos2])
+    else:
+        data['name_orig'] = data['name_rom']
+    return data
+
+
+def authors(page: str) -> dict[int, dict[str, str]]:
+    """
+    Извлечение имён авторов из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Словарь авторов — словарей имён авторов (персон) в WA.
+    """
+    pos1 = page.find('<b>Авторы</b>')
+    pos2 = page.find('</table>', pos1)
+    result = {}
+    while True:
+        pos1 = page.find('/people.php?id=', pos1, pos2) + 15
+        if pos1 == 14:
+            break
+        pos = page.find(" class='review'>", pos1, pos2) - 1
+        id_ = int(page[pos1:pos])
+        result[id_] = people(id_)
+    return result
+
+
+def publications(page: str) -> dict[int, dict[str, str]]:
+    """
+    Извлечение изданий из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Словарь изданий в WA.
+    """
+    pos1 = page.find('<b>Сериализация</b>')
+    pose = page.find('</table>', pos1)
+    result = {}
+    while True:
+        pos1 = page.find('/company.php?id=', pos1, pose) + 16
+        if pos1 == 15:
+            break
+        pos2 = page.find("'", pos1, pose)
+        id_ = int(page[pos1:pos2])
+        pos1 = pos2 + 17
+        publication = page[pos1:page.find('</a>', pos1)]
+        page_ = html(id_, url=f'{WA}company.php')
+        posa = page_.find(f'<b>{publication}</b>')
+        posb = page_.find('<b>Сериализация</b>', posa)
+        posa = page_.find('company.php', posa, posb)
+        posa = page_.find("class='review'>", posa, posb) + 15
+        publishing = page_[posa:page_.find('</a>', posa, posb)]
+        result[id_] = {'publication': publication, 'publishing': publishing}
+    return result
+
+
+def genres(page: str) -> list[str]:
+    """
+    Извлечение жанров из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Список жанров в WA.
+    """
+    pos_w1 = page.find('<b>Жанр</b>')
+    pos_w2 = page.find('</table>', pos_w1)
+    pos_w1 = page.find("class='review'>", pos_w1, pos_w2) + 15
+    result = []
+    while pos_w1 > 14:
+        genre = page[pos_w1:page.find('</a>', pos_w1, pos_w2)]
+        if genre not in IGNORED_GENRES:
+            result.append(genre)
+        pos_w1 = page.find("class='review'>", pos_w1, pos_w2) + 15
+    return result
+
+
+def poster(page: str, am: bool = False) -> str | None:
+    """
+    Извлечение URL постера из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :param am: Переключатель: anime/манга (False/True).
+    :return: URL постера в WA.
+    """
+    pos = page.find("<a href='img/") if am else page.find(f"<a href='{WAA}{AN}_poster.php?id=")
+    if pos != -1:
+        if am:
+            return f'{WAA}img/' + page[pos + 13:page.find("' ", pos)]
+        else:
+            pos = page.find(f"<img src='{WAA}img/", pos)
+            return page[pos + 10:page.find("' ", pos)]
+
+
+def extraction_manga(page: str) -> dict[str, str | dict[int, dict[str, str]] | dict[int, str] | list[str]]:
+    """
+    Извлечение манги из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Словарь данных по манги в WA.
+    {
+        'name_orig': str,
+        'name_rom': str,
+        'name_eng': str,
+        'name_rus': str,
+        'author_of_manga': dict[int, dict[str, str]],
+        'date_of_premiere': str,
+        'publication': dict[int, dict[str, str]],
+        'genre': list[str],
+        'poster': str
+    }
+    """
+    result = {
+        'name_orig': title_orig(page, True),
+        'name_rom': manga_title_r(title_rom, page, True),
+        'name_eng': title_eng(page, True),
+        'name_rus': manga_title_r(title_rus, page),
+        'author_of_manga': authors(page),
+        'date_of_premiere': manga_date_of_premiere(page),
+        'publication': publications(page),
+        'genre': genres(page),
+        'poster': poster(page, True),
+        'ann': ann_manga_id(page)
+    }
+    if result['name_rus'] == result['name_rom']:
+        result['name_rus'] = ''
+    if result['name_eng'] == '' and result['name_orig'] == result['name_rom']:
+        result['name_eng'] = result['name_rom']
+    elif result['name_rus'] == '' and result['name_eng'] and result['name_rom']:
+        result['name_rus'] = result['name_rom']
+        result['name_rom'] = result['name_eng']
+    return result
+
+
+def anime_format(page: str) -> str:
+    """
+    Извлечение формата anime из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Формат anime в WA.
+    """
+    pos1 = page.find('<b>Тип</b>') + 63
+    pos2 = page.find('</table>', pos1)
+    pos = page.find(' (', pos1, pos2)
+    if pos == -1:
+        pos = page.find(',', pos1, pos2)
+    return page[pos1:pos]
+
+
+def number_of_episodes(page: str) -> int:
+    """
+    Извлечение количества эпизодов из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Количество эпизодов в WA.
+    """
+    pos1 = page.find('<b>Тип</b>')
+    pos2 = page.find('</table>', pos1)
+    pos1 = page.find(' (', pos1, pos2) + 2
+    if pos1 == 1:
+        return 1
+    pos2 = page.find(' эп.', pos1, pos2)
+    return int(page[pos1:pos2])
+
+
+def duration(page: str) -> str:
+    """
+    Извлечение продолжительности эпизода из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Продолжительность эпизода в формате чч:мм в WA.
+    """
+    pos1 = page.find('<b>Тип</b>')
+    pos2 = page.find('</table>', pos1)
+    pos = page.find('), ', pos1, pos2) + 3
+    if pos == 2:
+        pos = page.find(', ', pos1, pos2) + 2
+    pos2 = page.find(' мин.', pos1, pos2)
+    return hours_minutes(int(page[pos:pos2]))
+
+
+def anime_date_of_premiere(page: str) -> str:
+    """
+    Извлечение даты премьеры anime из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Дата премьеры anime в WA.
+    """
+    pos = page.find('<b>Выпуск</b>')
+    if pos == -1:
+        pos = page.find('<b>Премьера</b>')
+    res = ''
+    for i in range(3):
+        pos = page.find("class='review'>", pos) + 15
+        res = page[pos:pos + (2 if i < 2 else 4)] + ('-' + res if i > 0 else '')
+    return res
+
+
+def studios(page: str) -> list[str] | None:
+    """
+    Извлечение студий из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Список наименований студий в WA. None — если нет информации о студиях.
+    """
+    url = f'{WAA}{AN}_full_production.php'
+    pos_w1 = page.find('<b>Основное</b>') + 15
+    pos_w1 = page.find(url, pos_w1) + 67
     if pos_w1 == 66:
-        return [1]
-    pos_w2 = wa_page.find('" >компании', pos_w1)
+        return
+    pos_w2 = page.find('" >компании', pos_w1)
     if pos_w2 == -1:
-        return [1]
-    aid = wa_page[pos_w1:pos_w2]
+        return
+    aid = page[pos_w1:pos_w2]
     sleep(1)
     data = requests.get(url, {'id': aid}, cookies=COOKIES_WA).text
     pos_w1 = data.find('<b>Производство:</b>')
     if pos_w1 == -1:
-        return [1]
+        return
     pos_w2 = data.find('</table>', pos_w1)
     pos_w1 = data.find("class='estimation'>", pos_w1, pos_w2) + 19
     result = []
     while pos_w1 > 18:
-        studio = decode_name(data[pos_w1:data.find('</a>', pos_w1, pos_w2)])
-        pos_o2 = o_page.lower().find(f'">{studio.lower()}</option>')
-        if pos_o2 != -1:
-            pos_o1 = o_page.find('="', pos_o2 - 5) + 2
-            result.append(int(o_page[pos_o1:pos_o2]))
-        else:
-            result.append(db.put('Studio', {'name_s': studio}))
+        result.append(decode_name(data[pos_w1:data.find('</a>', pos_w1, pos_w2)]))
         pos_w1 = data.find("class='estimation'>", pos_w1, pos_w2) + 19
     return result
 
 
-def directors_id(wa_page: str, o_page: str) -> list:
+def directors(page: str) -> list[dict[str, str]] | None:
     """
-    Поиск ID соответствующих режиссёров из WA в БД.
-    :param wa_page: World Art страница (HTML-код).
-    :param o_page: Страница веб-приложения интерфейса БД (HTML-код).
-    :return: Список ID режиссёров в БД.
+    Извлечение режиссёров из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Список словарей режиссёров в WA. None — если нет информации о режиссёрах.
     """
-    url = f'{WAA}{A}_full_cast.php'
-    pos1 = wa_page.find('<b>Основное</b>') + 15
-    pos1 = wa_page.find(url, pos1) + 61
+    url = f'{WAA}{AN}_full_cast.php'
+    pos1 = page.find('<b>Основное</b>') + 15
+    pos1 = page.find(url, pos1) + 61
     if pos1 == 60:
-        return [1]
-    pos2 = wa_page.find('" >авторы', pos1)
+        return
+    pos2 = page.find('" >авторы', pos1)
     if pos2 == -1:
-        return [1]
-    aid = wa_page[pos1:pos2]
+        return
+    aid = page[pos1:pos2]
     sleep(1)
     data = requests.get(url, {'id': aid}, cookies=COOKIES_WA).text
     pos1 = data.find('<b>Режиссер:</b>')
@@ -502,7 +715,7 @@ def directors_id(wa_page: str, o_page: str) -> list:
     ex = data.find('режиссер эпизода/сегмента')
     if ex == -1:
         ex = pos2
-    wa_directors = []
+    result = []
     i = 0
     while True:
         pos1 = data.find('people.php?id=', pos1, pos2) + 14
@@ -511,189 +724,75 @@ def directors_id(wa_page: str, o_page: str) -> list:
             tr = pos2
         if pos1 == 13 or tr > ex:
             break
-        wa_directors.append({'id': int(data[pos1:data.find('" ', pos1, pos2)]), 'exist': False})
-        pos1 = data.find("class='estimation'>", pos1, pos2) + 19
-        wa_directors[i]['name'] = data[pos1:data.find('</a>', pos1, pos2)]
+        result.append(people(int(data[pos1:data.find('" ', pos1, pos2)])))
         i += 1
-    pos1 = o_page.find('<select name="andir[]"')
-    pos2 = o_page.find('</select>', pos1)
-    o_directors = re.findall(r'<option value="(.*?)">.*? / .*? / (.*?)</option>', o_page[pos1:pos2])
-    result = []
-    for i in range(len(wa_directors)):
-        for o_director in o_directors:
-            if o_director[1] == wa_directors[i]['name']:
-                result.append(int(o_director[0]))
-                wa_directors[i]['exist'] = True
-                break
-    if len(result) < len(wa_directors):
-        for wa_director in wa_directors:
-            if not wa_director['exist']:
-                result.append(put_people(wa_director['id'], 'Director'))
-    return result
+    return result if len(result) else None
 
 
-def anime_in_ann(wa_page: str) -> str | bool:
+def notes(page: str) -> str:
     """
-    Страница anime в ANN по ID из World Art.
-    :param wa_page: Страница anime на World Art (HTML-код).
-    :return: XML-страница anime на ANN, если есть ссылка, или False.
+    Извлечение примечаний из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :return: Примечания в WA.
     """
-    pos1 = wa_page.find('<b>Сайты</b>')
-    pos1 = wa_page.find('&nbsp;- <noindex>', pos1)
-    pos2 = wa_page.find('<table ', pos1)
-    pos1 = wa_page.find(f'{SANNE}anime.php', pos1, pos2) + 59
-    if pos1 == 57:
-        return False
-    aid = int(wa_page[pos1:wa_page.find("' ", pos1, pos2)])
-    return ann.xml({'anime': aid})
-
-
-def number_of_episodes(wa_page: str) -> int:
-    """
-    Извлечение количества эпизодов из WA.
-    :param wa_page: World Art страница (HTML-код).
-    :return: Количество эпизодов.
-    """
-    pos1 = wa_page.find('<b>Тип</b>')
-    pos2 = wa_page.find('</table>', pos1)
-    pos1 = wa_page.find(' (', pos1, pos2) + 2
-    if pos1 == 1:
-        return 1
-    pos2 = wa_page.find(' эп.', pos1, pos2)
-    return int(wa_page[pos1:pos2])
-
-
-def duration(wa_page: str):
-    """
-    Извлечение продолжительности эпизода из WA.
-    :param wa_page: World Art страница (HTML-код).
-    :return: Продолжительность эпизода в формате чч:мм.
-    """
-    pos1 = wa_page.find('<b>Тип</b>')
-    pos2 = wa_page.find('</table>', pos1)
-    pos = wa_page.find('), ', pos1, pos2) + 3
-    if pos == 2:
-        pos = wa_page.find(', ', pos1, pos2) + 2
-    pos2 = wa_page.find(' мин.', pos1, pos2)
-    m = int(wa_page[pos:pos2])
-    h = 0
-    if m > 60:
-        h = m // 60
-        m = m - 60 * h
-    t = time(h, m)
-    return t.isoformat('minutes')
-
-
-def date_of_premiere_anime(wa_page: str) -> str:
-    """
-    Извлечение даты премьеры из WA.
-    :param wa_page: World Art страница (HTML-код).
-    :return: Дата премьеры в формате гггг-мм-дд.
-    """
-    pos = wa_page.find('<b>Выпуск</b>')
-    if pos == -1:
-        pos = wa_page.find('<b>Премьера</b>')
-    res = ''
-    for i in range(3):
-        pos = wa_page.find("class='review'>", pos) + 15
-        res = wa_page[pos:pos + (2 if i < 2 else 4)] + ('-' + res if i > 0 else '')
-    return res
-
-
-def notes(wa_page: str) -> str:
-    """
-    Извлечение примечаний из WA.
-    :param wa_page: World Art страница (HTML-код).
-    :return: Примечания.
-    """
-    pos1 = wa_page.find('<b>Тип</b>')
-    pos2 = wa_page.find('</table>', pos1)
-    pos1 = wa_page.find(' (', pos1, pos2) + 2
+    pos1 = page.find('<b>Тип</b>')
+    pos2 = page.find('</table>', pos1)
+    pos1 = page.find(' (', pos1, pos2) + 2
     if pos1 == 1:
         return ''
-    pos1 = wa_page.find(' + ', pos1, pos2) + 1
+    pos1 = page.find(' + ', pos1, pos2) + 1
     if pos1 == 0:
         return ''
-    pos2 = wa_page.find('), ', pos1, pos2)
-    return wa_page[pos1:pos2]
+    pos2 = page.find('), ', pos1, pos2)
+    return page[pos1:pos2]
 
 
-# === Manga ===
-def search_publication_or_publishing(name: str) -> str | None:
+def extraction_anime(page: str, mid: int | None = None
+                     ) -> dict[str, str | int | list[str] | list[dict[str, str]] | None]:
     """
-    Поиск страницы издания или издательства по наименованию в WA.
-    :param name: Наименование издания или издательства.
-    :return: Искомая страница (HTML-код) или None.
+    Извлечение anime из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :param mid: ID связанной манги в WA.
+    :return: Словарь данных по anime в WA.
+    {
+        'name_orig': str,
+        'name_rom': str,
+        'name_eng': str,
+        'name_rus': str,
+        'format': str,
+        'number_of_episodes': int,
+        'duration': str,
+        'date_of_premiere': str,
+        'studio': list[str],
+        'director': dict[int, dict[str, str]],
+        'genre': list[str],
+        'notes': str,
+        'poster': str,
+        'ann': int
+    }
     """
-    search = points_codes(name)
-    sleep(1)
-    data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
-                        params={'public_search': search, 'global_sector': 'company'}).text
-    pid = 0
-    if data.find("<meta http-equiv='Refresh'") != -1:
-        pid = int(data[data.find('?id=') + 4:-2])
-    else:
-        posa = 0
-        ls = len(search)
-        wb = False
-        str_sub = f'<a href = "company.php?id='
-        lss = len(str_sub)
-        while True:
-            posa = data.find(str_sub, posa) + lss
-            if posa == lss - 1:
-                break
-            pos = posa
-            postd = data.find('</td>', pos)
-            while True:
-                pos = data.find(search, pos, postd)
-                if pos == -1:
-                    break
-                pos1 = pos + ls
-                if data[pos1:pos1 + 4] == '</a>' and data[pos - 1:pos] == '>':
-                    wb = True
-                    break
-                pos = pos1
-            if wb:
-                break
-    if pid == 0:
-        try:
-            pid = int(data[posa:data.find('" ', posa)])
-        except ValueError:
-            return None
-    sleep(1)
-    return requests.get(f'{WA}company.php', {'id': pid}, cookies=COOKIES_WA).text
-
-
-def extraction_publishing(page: str) -> str:
-    """
-    Извлечение издательства из страницы издания на WA.
-    :param page: Страница издания на WA (HTML-код).
-    :return: Наименование издательства.
-    """
-    pos1 = page.find('<b>Издатель</b>') + 15
-    pose = page.find('</table>', pos1)
-    pos1 = page.find('<a href=', pos1, pose)
-    pos1 = page.find('>', pos1, pose)
-    return page[pos1:page.find('</a>', pos1, pose)]
-
-
-def valid_publication(publishing: str, publication: str) -> bool:
-    """
-    Проверка принадлежности издания издательству по БД World Art.
-    :param publishing: Издательство.
-    :param publication: Издание.
-    :return: Найдено или нет.
-    """
-    page = search_publication_or_publishing(publishing)
-    pos1 = page.find('<b>Принадлежащие издания</b>') + 28
-    pose = page.find('</table>', pos1)
-    while True:
-        pos1 = page.find("<a href='company.php?id=", pos1, pose) + 24
-        if pos1 == 23:
-            return False
-        pos2 = page.find("'", pos1, pose)
-        posa = page.find('>', pos2, pose) + 1
-        posb = page.find('</a>', posa, pose)
-        if page[posa:posb] == publication:
-            return True
-        pos1 = posb
+    result = {
+        'name_orig': title_orig(page),
+        'name_rom': title_rom(page),
+        'name_eng': title_eng(page),
+        'name_rus': title_rus(page),
+        'format': anime_format(page),
+        'number_of_episodes': number_of_episodes(page),
+        'duration': duration(page),
+        'date_of_premiere': anime_date_of_premiere(page),
+        'studio': studios(page),
+        'director': directors(page),
+        'genre': genres(page),
+        'notes': notes(page),
+        'poster': poster(page),
+        'ann': ann_anime_id(page)
+    }
+    if result['name_rus'] == result['name_rom']:
+        result['name_rus'] = ''
+    if result['name_orig'] == result['name_rus'] and result['name_rom'] != '':
+        result['name_orig'] = result['name_rom']
+    if result['name_eng'] == '' and result['name_orig'] == result['name_rom']:
+        result['name_eng'] = result['name_rom']
+    if mid:
+        result[M + '_id'] = mid
+    return result
