@@ -116,7 +116,8 @@ def manga_anime_in_page(pages: dict[str, str]) -> dict[str, dict[str, dict[str, 
     for page_title_norm, page in pages.items():
         res = {}
         posb = page.find('<table') + 7
-        if page.find('class="box-Lead_too_short', posb) != -1:
+        if (page.find('class="box-Lead_too_short', posb) != -1 or
+                page.find('>This article <b>needs additional citations for', posb) != -1):
             posb = page.find('<table', posb) + 7
         pose = page.find('</table>', posb)
         pos1 = page.find('class="infobox-subheader"', posb, pose)
@@ -172,28 +173,27 @@ def date_of_premiere(page_part: str) -> str | None:
     :param page_part: Часть страницы (HTML-код) в WP.
     :return: Дата премьеры в WP либо None.
     """
-    posa = page_part.find('<th scope="row" class="infobox-label">Released</th><td class="infobox-data">'
-                          '<span class="nowrap"> ') + 98
-    posb = page_part.find('<th scope="row" class="infobox-label">Original run</th><td class="infobox-data">'
-                          '<span class="nowrap">') + 101
+    posa = page_part.find('<th scope="row" class="infobox-label">Released</th><td class="infobox-data">') + 76
+    posb = page_part.find('<th scope="row" class="infobox-label">Original run</th><td class="infobox-data">') + 80
     posc = page_part.find('<th scope="row" class="infobox-label">Published</th><td class="infobox-data">') + 77
     posd = page_part.find('>Release date</div></th>') + 24
     v2 = False
-    if posa == 97 and posb != 100:
+    if posa == 75 and posb != 79:
         pos1 = posb
-    elif posb == 100 and posa != 97:
+    elif posb == 79 and posa != 97:
         pos1 = posa
-    elif posa == 97 and posb == 100 and posc != 76:
+    elif posa == 75 and posb == 79 and posc != 76:
         pos1 = posc
     elif posd != 23:
         pos1 = page_part.find('<', posd)
-        while posd == pos1 or posd == pos1 + 1:
-            pos1 = page_part.find('>', pos1) + 1
-            posd = page_part.find('<', pos1)
         v2 = True
         pos2 = posd
     else:
         return
+    pos = page_part.find('<', pos1)
+    while pos == pos1 or pos == pos1 + 1:
+        pos1 = page_part.find('>', pos1) + 1
+        pos = page_part.find('<', pos1)
     if not v2:
         posa = page_part.find('</span>', pos1)
         posb = page_part.find('<span', pos1)

@@ -268,8 +268,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                     if annd == md or annd == md + 1:
                         for aut in anndata['author_of_manga']:
                             q = maut(aut)
-                        if not q and annid == wadata['ann']:
-                            q = True
+                    if not q and annid == wadata['ann']:
+                        q = True
                     if q:
                         for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'number_of_volumes', 'poster'):
                             if not mdata[tit] and anndata[tit]:
@@ -382,8 +382,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                                 q = True
                                 break
                             q = False
-                    if not q and annid == wadata['ann']:
-                        q = True
+                if not q and annid == wadata['ann']:
+                    q = True
                 if q or qd:
                     for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus',
                                 'number_of_episodes', 'date_of_premiere'):
