@@ -177,10 +177,11 @@ def date_of_premiere(page_part: str) -> str | None:
     posb = page_part.find('<th scope="row" class="infobox-label">Original run</th><td class="infobox-data">') + 80
     posc = page_part.find('<th scope="row" class="infobox-label">Published</th><td class="infobox-data">') + 77
     posd = page_part.find('>Release date</div></th>') + 24
+    posf = page_part.find('<th scope="row" class="infobox-label">Release</th><td class="infobox-data">') + 75
     v2 = False
     if posa == 75 and posb != 79:
         pos1 = posb
-    elif posb == 79 and posa != 97:
+    elif posb == 79 and posa != 75:
         pos1 = posa
     elif posa == 75 and posb == 79 and posc != 76:
         pos1 = posc
@@ -188,24 +189,36 @@ def date_of_premiere(page_part: str) -> str | None:
         pos1 = page_part.find('<', posd)
         v2 = True
         pos2 = posd
+    elif posf != 74:
+        pos1 = posf
     else:
         return
-    pos = page_part.find('<', pos1)
+    pose = page_part.find('</td>', pos1)
+    pos = page_part.find('<', pos1, pose)
     while pos == pos1 or pos == pos1 + 1:
-        pos1 = page_part.find('>', pos1) + 1
-        pos = page_part.find('<', pos1)
+        pos1 = page_part.find('>', pos1, pose) + 1
+        pos = page_part.find('<', pos1, pose)
     if not v2:
-        posa = page_part.find('</span>', pos1)
-        posb = page_part.find('<span', pos1)
+        posa = page_part.find('</span>', pos1, pose)
+        posb = page_part.find('<span', pos1, pose)
         pos2 = min(posa, posb)
         if pos2 < 0:
-            pos2 = page_part.find('<', pos1)
+            pos2 = page_part.find('<', pos1, pose)
+        if pos2 < 0:
+            pos2 = pose
     date = page_part[pos1:pos2].replace('&#160;', ' ').strip()
     if len(date) == 4:
         return date_parser.parse(date).strftime('%Y') + '-12-31'
     date_ = date.split(' ')
-    if len(date_) == 2:
+    if len(date_) == 2 and ((date_[0].isdigit() and len(date_[0]) == 4) or (date_[1].isdigit() and len(date_[1]) == 4)):
         return month(date)
+    elif len(date_) == 2:
+        pos2 = page_part.find('</span>', pos1, pose)
+        if pos2 != -1 and 'start' in page_part[pos1:pos2]:
+            while pos < pos2:
+                pos1 = page_part.find('>', pos1, pose) + 1
+                pos = page_part.find('<', pos1, pose)
+            return page_part[pos1:pos2].strip()
     return date_parser.parse(date).strftime('%Y-%m-%d')
 
 
@@ -430,6 +443,7 @@ def publications(page_part: str) -> dict[str, str]:
                     pos = pos + 3
                     posb = posb - 4
                 res[pp] = frequency(page_part[pos:posb])
+            res[pp] = res[pp].replace("MediaWorks", "Media Works").removesuffix(" (publisher)")
         elif pp == 'publication':
             res.update({pp: f'? ({res['publishing']})', 'type': 2})
         else:

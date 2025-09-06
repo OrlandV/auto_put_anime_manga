@@ -796,3 +796,17 @@ def extraction_anime(page: str, mid: int | None = None
     if mid:
         result[M + '_id'] = mid
     return result
+
+
+def search_people(name_rom: str) -> dict[str, str] | None:
+    """
+    Поиск персоны в WA.
+    :param name_rom: Имя персоны на ромадзи или английском.
+    :return: Словарь имён персоны либо None.
+    """
+    page = requests.get(WA + 'search.php', cookies=COOKIES_WA,
+                        params={'public_search': name_rom, 'global_sector': "people"}).text
+    pos = page.find("people.php?id=") + 14
+    if pos != 13:
+        id_ = int(page[pos:page.find("'", pos)])
+        return people(id_)

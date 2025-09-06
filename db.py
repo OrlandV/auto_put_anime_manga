@@ -257,13 +257,26 @@ class DB(dbc.DB):
                  f'{self.get_id_add(44, data[self.fields[44]])})')
         return self.execute(query)
 
-    def get_id(self, fni: int, value: dict[str, str] | int | str) -> int | None:
+    def get_anime_id(self, data: dict[str, str | int | list[str | dict[str, str] | int]]) -> int | None:
+        """
+        Запрос из БД ID anime.
+        :param data: Словарь данных по anime.
+        :return: ID anime или None.
+        """
+        return self.get_id(51, data)
+
+    def get_id(self, fni: int, value: dict[str, str | int | list[str | dict[str, str] | int]] | int | str
+               ) -> int | None:
         """
         Запрос из БД ID указанного значения в указанной таблице.
         :param fni: Индекс таблицы в кортеже полей self.fields.
         :param value: Искомое значение.
         :return: ID значения в соответствующей таблице или None.
         """
+        if fni in (50, 51):
+            query = (f'SELECT {self.fields[0]} FROM {self.fields[fni]} WHERE ({self.fields[16]} = '
+                     f'"{value['name_orig']}") OR ({self.fields[17]} = "{value['name_rom']}")')
+            return self.__get_id(query)
         query_ = f'SELECT {self.fields[0]} FROM {self.fields[fni]} WHERE InStr('
         if fni == 53:
             query = f'{query_}{self.fields[17]}, "{value[self.fields[17]]}") > 0'
@@ -275,8 +288,7 @@ class DB(dbc.DB):
                 query = f'{query_}{self.fields[16]}, "{value[self.fields[16]].replace(' ', '')}") > 0'
                 res = self.__get_id(query)
         else:
-            query = (f'SELECT {self.fields[0]} FROM {self.fields[fni]} '
-                     f'WHERE InStr({self.fields[1]}, "{value}") > 0')
+            query = f'SELECT {self.fields[0]} FROM {self.fields[fni]} WHERE {self.fields[1]} = "{value}"'
             res = self.__get_id(query, fni, value)
         return res
 
@@ -294,6 +306,14 @@ class DB(dbc.DB):
                 id_ = self.add(fni, {self.fields[1]: value})
             return id_
         return value
+
+    def get_manga_id(self, data: dict[str, str | int | list[dict[str, str] | str]]) -> int | None:
+        """
+        Запрос из БД ID манги.
+        :param data: Словарь данных по манге.
+        :return: ID манги или None.
+        """
+        return self.get_id(50, data)
 
 
 def save_poster(url: str, id_: int, am: bool = False) -> None:

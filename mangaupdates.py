@@ -137,16 +137,19 @@ def authors_of_manga(mu_json: json.JSONEncoder) -> dict[int, dict[str, str]]:
     :return: Словарь {ID: Словарь_имён} словарей имён авторов манги в MU.
     """
     authors = {}
-    for author in mu_json['authors']:
+    for i, author in enumerate(mu_json['authors']):
         if author['type'] in ('Author', 'Artist'):
-            sleep(1)
-            author_json = requests.get(f'{AMUA}{author['author_id']}').json()
-            pos = author_json['name'].find(' (')
-            name_rom = author_json['name'][:pos] if pos != -1 else author_json['name']
-            authors[author['author_id']] = {
-                'name_orig': author_json['actualname'],
-                'name_rom': name_rom.lower().title()
-            }
+            if author['author_id']:
+                sleep(1)
+                author_json = requests.get(f'{AMUA}{author['author_id']}').json()
+                pos = author_json['name'].find(' (')
+                name_rom = author_json['name'][:pos] if pos != -1 else author_json['name']
+                authors[author['author_id']] = {
+                    'name_orig': author_json['actualname'],
+                    'name_rom': name_rom.lower().title()
+                }
+            else:
+                authors[i] = {'name_rom': author['name'].lower().title()}
     return authors
 
 
@@ -159,11 +162,14 @@ def publications(mu_json: json.JSONEncoder) -> list[dict[str, str | int]] | None
         - [{'publication': ? (Издательство), 'publishing': Издательство, 'type': 2}] — для книг;
         либо None.
     """
-    if 'publications' not in mu_json:
+    if 'publications' not in mu_json or 'publishers' not in mu_json:
         return
     res = []
     for publication in mu_json['publications']:
         res.append({'publication': publication['publication_name'], 'publishing': publication['publisher_name']})
+    for i in range(len(res)):
+        if not res[i]['publishing'] and mu_json['publishers'][i]['publisher_name']:
+            res[i]['publishing'] = mu_json['publishers'][i]['publisher_name']
     if not len(res):
         for publisher in mu_json['publishers']:
             res.append({'publication': f'? ({publisher['publisher_name']})', 'publishing': publisher['publisher_name'],
@@ -186,12 +192,19 @@ def genres(mu_json: json.JSONEncoder) -> list[str]:
             if genre['genre'] in GENRES_MU:
                 result.append(GENRES_MU[genre['genre']])
             else:
-                print('Новый жанр в MangaUpdates!', genre['genre'])
-                add = input('Добавить жанр? Y/N: ')
-                if add == 'Y' or add == 'y':
-                    new_genre = input('Наименование жанра на русском: ')
-                    result.append(new_genre)
-                    new_genres[genre['genre']] = new_genre
+                with open('new_genres.txt', 'r', encoding='utf8') as file:
+                    ng = file.readlines()
+                for g in ng:
+                    if ' ' in g and g[:g.find(':')] == genre:
+                        result.append(g[g.find(':') + 2:-1])
+                        break
+                else:
+                    print('Новый жанр в MangaUpdates!', genre['genre'])
+                    add = input('Добавить жанр? Y/N: ')
+                    if add == 'Y' or add == 'y':
+                        new_genre = input('Наименование жанра на русском: ')
+                        result.append(new_genre)
+                        new_genres[genre['genre']] = new_genre
     if len(new_genres):
         txt = 'MU\n'
         for ag, g in new_genres.items():

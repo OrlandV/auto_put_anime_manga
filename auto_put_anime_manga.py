@@ -15,6 +15,7 @@ import mangaupdates as mu
 from decode_name import normal_name
 from constants import *
 import db
+from Table import Table
 
 
 def ann_pages_in_wa(_ann_anime_pages: dict[int, str], _ann_manga_pages: dict[int, str],
@@ -115,7 +116,9 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
         :return: True — имена авторов совпадают. False — не совпадают.
         """
         for a in mdata['author_of_manga']:
-            if _aut['name_rom'] in a['name_rom'] or _aut['name_orig'] in a['name_orig'].replace(' ', ''):
+            if (_aut['name_rom'] == a['name_rom'] or
+                    ('name_orig' in _aut and 'name_orig' in a and
+                     _aut['name_orig'] == a['name_orig'].replace(' ', ''))):
                 return True
         return False
 
@@ -164,7 +167,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                             mdata[tit] = 1
                     for aut in mudata['author_of_manga'].values():
                         for ma in mdata['author_of_manga']:
-                            if not aut['name_orig'] and aut['name_rom'] in ma['name_rom']:
+                            if (('name_orig' not in ma or not ma['name_orig']) and 'name_orig' in aut and
+                                    aut['name_orig'] and aut['name_rom'] == ma['name_rom']):
                                 ma['name_orig'] = aut['name_orig']
                                 break
                     for mp in mudata['publication']:
@@ -172,7 +176,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                             mdata['publication'] = mudata['publication']
                             break
                         for ap in mdata['publication']:
-                            if ap['publication'] == mp['publication']:
+                            if ap['publication'].replace(' ', '') == mp['publication'].replace(' ', ''):
                                 break
                         else:
                             mdata['publication'].append(mp)
@@ -325,6 +329,11 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             for tit in ('name_orig', 'name_rom'):
                 if not mdata[tit] and mdata['name_eng']:
                     mdata[tit] = mdata['name_eng']
+            for author in mdata['author_of_manga']:
+                if 'name_rus' not in author:
+                    people = wa.search_people(author['name_rom'])
+                    if people:
+                        author['name_rus'] = people['name_rus']
             mdata['notes'] = notes(mdata)
             mdata = not_none()
             res[M].append(mdata)
@@ -345,6 +354,11 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             if len(mudata['genre']):
                 mdata['genre'] = mudata['genre']
             ids[M]['MU'].append(muid)
+            for author in mdata['author_of_manga']:
+                if 'name_rus' not in author:
+                    people = wa.search_people(author['name_rom'])
+                    if people:
+                        author['name_rus'] = people['name_rus']
             mdata['notes'] = notes(mdata)
             mdata = not_none()
             res[M].append(mdata)
@@ -352,14 +366,14 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
     # anime
     if A in wa_data:
         for waid, wadata in wa_data[A].items():
-            adata = {'format': wadata['format'], 'number_of_episodes': wadata['number_of_episodes'],
-                     'duration': wadata['duration'], 'studio': [], 'director': [], 'genre': [],
-                     'poster': wadata['poster'], M: None}
-            for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'date_of_premiere', 'notes'):
+            adata = {}
+            for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'format', 'number_of_episodes', 'duration',
+                        'date_of_premiere'):
                 adata[tit] = wadata[tit] if wadata[tit] else None
             for tit in ('studio', 'director', 'genre'):
-                if wadata[tit] is not None and len(wadata[tit]):
-                    adata[tit] = wadata[tit]
+                adata[tit] = wadata[tit] if wadata[tit] is not None and len(wadata[tit]) else []
+            adata['notes'] = wadata['notes'] if wadata['notes'] else None
+            adata.update({'poster': wadata['poster'], M: None})
             if M + '_id' in wadata:
                 adata[M] = []
                 i = 0
@@ -415,29 +429,35 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             awp()
             adata = not_none(False)
             res[A].append(adata)
-    for annid, anndata in ann_data[A].items():
-        if annid in ids[A]['ANN']:
-            continue
-        adata = {'format': anndata['format'], 'number_of_episodes': anndata['number_of_episodes'],
-                 'duration': anndata['duration'], 'studio': [], 'director': [], 'genre': [],
-                 'poster': anndata['poster'], M: None}
-        for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'date_of_premiere'):
-            adata[tit] = anndata[tit] if anndata[tit] else None
-        for tit in ('studio', 'director', 'genre'):
-            if anndata[tit] is not None and len(anndata[tit]):
-                adata[tit] = anndata[tit]
-        if M + '_id' in anndata:
-            adata[M] = []
-            i = 0
-            for mid in ann_data[M].keys():
-                if mid == anndata[M + '_id']:
-                    adata[M].append(i)
-                    break
-                i += 1
-        ids[A]['ANN'].append(annid)
-        awp()
-        adata = not_none(False)
-        res[A].append(adata)
+    if A in ann_data:
+        for annid, anndata in ann_data[A].items():
+            if annid in ids[A]['ANN']:
+                continue
+            adata = {}
+            for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'format', 'number_of_episodes', 'duration',
+                        'date_of_premiere'):
+                adata[tit] = anndata[tit] if tit in anndata and anndata[tit] else None
+            for tit in ('studio', 'director', 'genre'):
+                adata[tit] = anndata[tit] if tit in anndata and anndata[tit] is not None and len(anndata[tit]) else []
+            adata['notes'] = anndata['notes'] if 'notes' in anndata and anndata['notes'] else None
+            adata.update({'poster': anndata['poster'], M: None})
+            if M + '_id' in anndata:
+                adata[M] = []
+                i = 0
+                for mid in ann_data[M].keys():
+                    if mid == anndata[M + '_id']:
+                        adata[M].append(i)
+                        break
+                    i += 1
+            ids[A]['ANN'].append(annid)
+            awp()
+            for author in adata['director']:
+                if 'name_rus' not in author:
+                    people = wa.search_people(author['name_rom'])
+                    if people:
+                        author['name_rus'] = people['name_rus']
+            adata = not_none(False)
+            res[A].append(adata)
     return res
 
 
@@ -467,6 +487,27 @@ def title_unique(_data: dict[str, list[dict[str, str | list[dict[str, str]] | in
     return _data
 
 
+def control(_data: dict[str, list[dict[str, str | list[dict[str, str]] | int | list[str] | None]]]
+            ) -> dict[str, list[dict[str, str | list[dict[str, str]] | int | list[str] | None]]]:
+    """
+    Вывод единого словаря данных пользователю и запрос указания добавляемых в БД данных.
+    :param _data: Единый словарь данных.
+    :return: Единый словарь данных для сохранения.
+    """
+    for _am, els in _data.items():
+        print(Table(els, _am.title()))
+    sav = input("Номера добавляемых в БД кортежей (через пробел): ").split()
+    i = 0
+    sav_data = {}
+    for _am, els in _data.items():
+        sav_data[_am] = []
+        for el in els:
+            i += 1
+            if str(i) in sav:
+                sav_data[_am].append(el)
+    return sav_data
+
+
 if __name__ == '__main__':
     # Поиск и сбор страниц
     wa_anime_pages = wa.search_anime(title, year, form) if A_M == A else None
@@ -474,6 +515,8 @@ if __name__ == '__main__':
     ann_anime_pages, ann_manga_pages, ann_rm = ann.search_pages(title, year, form)
     wp_pages = wp.search_pages(title)
     mu_pages = mu.search_pages(title, year) if A_M == M else None
+    if not mu_pages:
+        mu_pages = mu.search_pages(title)
     if wa_anime_pages and len(wa_anime_pages):
         wa_manga_pages, wa_rm = wa.manga_pages_from_anime(wa_manga_pages, wa_anime_pages)
     if wa_manga_pages and len(wa_manga_pages):
@@ -505,13 +548,18 @@ if __name__ == '__main__':
     # Формирование единого словаря данных
     data = title_unique(data_join())
 
+    # Контроль и выбор
+    data = control(data)
+
     # Добавление данных в БД
     am = db.DB()
     if len(data[M]):
         for i, md in enumerate(data[M]):
-            mid = am.add_manga(md)
-            if 'poster' in md and md['poster']:
-                db.save_poster(md['poster'], mid, True)
+            mid = am.get_manga_id(md)
+            if not mid:
+                mid = am.add_manga(md)
+                if 'poster' in md and md['poster']:
+                    db.save_poster(md['poster'], mid, True)
             # Прописывание нового ID манги в связи anime
             for a in range(len(data[A])):
                 if data[A][a][M]:
@@ -520,6 +568,8 @@ if __name__ == '__main__':
                             data[A][a][M][m] = mid
     if len(data[A]):
         for ad in data[A]:
-            aid = am.add_anime(ad)
-            if 'poster' in ad and ad['poster']:
-                db.save_poster(ad['poster'], aid)
+            aid = am.get_anime_id(ad)
+            if not aid:
+                aid = am.add_anime(ad)
+                if 'poster' in ad and ad['poster']:
+                    db.save_poster(ad['poster'], aid)
