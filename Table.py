@@ -28,8 +28,8 @@ class Content:
                 setattr(self, key, value)
             elif isinstance(value, int):
                 setattr(self, key, str(value))
-            elif isinstance(value[0], str):
-                setattr(self, key, ", ".join(value))
+            elif not isinstance(value[0], dict):
+                setattr(self, key, ", ".join(map(str, value)))
             else:
                 s = []
                 for el in value:
@@ -95,7 +95,7 @@ class Table:
             for cell in self.name_length.keys():
                 if cell != 'number':
                     self.result += ' | '
-                self.result += f'{getattr(content, cell):^{self.name_length[cell]}}'
+                self.result += f'{getattr(content, cell) if hasattr(content, cell) else "":^{self.name_length[cell]}}'
         self.result += f'\n{'—' * width}'
 
     def __str__(self):

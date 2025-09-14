@@ -105,15 +105,13 @@ class DB(dbc.DB):
         else:
             return
 
-    def add(self, fni: int, data: dict[str, str], ref: str | None = None) -> int:
+    def add(self, fni: int, data: dict[str, str]) -> int:
         """
         Добавление данных по сущности, имя которой определяется по индексу в кортеже полей.
         :param fni: Индекс таблицы в кортеже полей self.fields.
         :param data: Словарь данных по сущности.
-        :param ref: Имя связи.
         :return: Присвоенный ID.
         """
-        # Данный метод был адаптирован из PHP целиком, но на данном этапе разработки полностью не используется.
         query = f'INSERT INTO {self.fields[fni]} VALUES (DEFAULT, '
         if fni == 53:
             query += ((f'"{data[self.fields[16]]}"' if self.fields[16] in data and data[self.fields[16]] else "NULL") +
@@ -121,8 +119,7 @@ class DB(dbc.DB):
                       (f'"{data[self.fields[18]]}"' if self.fields[18] in data and data[self.fields[18]] else "NULL"))
         else:
             f = fni if fni in (23, 29) else 1
-            query += '"' + data[self.fields[f] + (("tr" if ref == "Rip" else "tv") if fni == 26 else
-                                                  ("s" if fni == 5 else ""))] + '"'
+            query += f'"{data[self.fields[f]]}"'
         query += ')'
         return self.execute(query)
 

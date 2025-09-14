@@ -50,6 +50,7 @@ GENRES_MU = {
     'Fantasy': 'фэнтези',
     'Hentai': 'эротика',
     'Horror': 'ужасы',
+    'Mecha': 'меха',
     'Mystery': 'мистика',
     'Psychological': 'психология',
     'Romance': 'романтика',
