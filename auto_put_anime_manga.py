@@ -488,7 +488,7 @@ def title_unique(_data: dict[str, list[dict[str, str | list[dict[str, str]] | in
 
 
 def control(_data: dict[str, list[dict[str, str | list[dict[str, str]] | int | list[str] | None]]]
-            ) -> dict[str, list[dict[str, str | list[dict[str, str]] | int | list[str] | None]]]:
+            ) -> dict[str, list[dict[str, str | list[dict[str, str]] | int | list[str] | bool | None]]]:
     """
     Вывод единого словаря данных пользователю и запрос указания добавляемых в БД данных.
     :param _data: Единый словарь данных.
@@ -496,15 +496,18 @@ def control(_data: dict[str, list[dict[str, str | list[dict[str, str]] | int | l
     """
     for _am, els in _data.items():
         print(Table(els, _am.title()))
-    sav = input("Номера добавляемых в БД кортежей (через пробел): ").split()
+    lm = len(_data[M])
+    sav = input("Номера добавляемых в БД кортежей (через пробел), либо «*» для всех: ").split()
+    if sav[0] == "*":
+        sav = list(range(1, lm + len(_data[A]) + 1))
     i = 0
     sav_data = {}
     for _am, els in _data.items():
         sav_data[_am] = []
         for el in els:
+            sav_data[_am].append(el)
             i += 1
-            if str(i) in sav:
-                sav_data[_am].append(el)
+            sav_data[_am][i - 1 - (lm if _am == A else 0)]['save'] = True if str(i) in sav or i in sav else False
     return sav_data
 
 
@@ -556,7 +559,7 @@ if __name__ == '__main__':
     if len(data[M]):
         for i, md in enumerate(data[M]):
             mid = am.get_manga_id(md)
-            if not mid:
+            if md['save'] and not mid:
                 mid = am.add_manga(md)
                 if 'poster' in md and md['poster']:
                     db.save_poster(md['poster'], mid, True)
@@ -569,7 +572,7 @@ if __name__ == '__main__':
     if len(data[A]):
         for ad in data[A]:
             aid = am.get_anime_id(ad)
-            if not aid:
+            if ad['save'] and not aid:
                 aid = am.add_anime(ad)
                 if 'poster' in ad and ad['poster']:
                     db.save_poster(ad['poster'], aid)

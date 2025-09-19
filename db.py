@@ -285,7 +285,9 @@ class DB(dbc.DB):
                 query = f'{query_}{self.fields[16]}, "{value[self.fields[16]].replace(' ', '')}") > 0'
                 res = self.__get_id(query)
         else:
-            query = f'SELECT {self.fields[0]} FROM {self.fields[fni]} WHERE {self.fields[1]} = "{value}"'
+            query = (f'SELECT {self.fields[0]} FROM {self.fields[fni]} '
+                     f'WHERE {(f'InStr({self.fields[1]}, "{value}") > 0' if fni == 5 and value == "Toei Animation" else
+                               f'{self.fields[1]} = "{value}"')}')
             res = self.__get_id(query, fni, value)
         return res
 

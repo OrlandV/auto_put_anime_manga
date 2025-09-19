@@ -32,7 +32,8 @@ def search_pages_id(mangas: dict[int, json.JSONEncoder] | None, mu_id: int) -> d
         mangas = {}
     mangas[mu_id] = manga
     for rs in manga['related_series']:
-        if rs['related_series_id'] not in mangas and '(Novel)' not in rs['related_series_name']:
+        if (rs['related_series_id'] not in mangas and 'related_series_name' in rs and
+                rs['related_series_name'] and '(Novel)' not in rs['related_series_name']):
            mangas = search_pages_id(mangas, rs['related_series_id'])
     return mangas
 
@@ -144,10 +145,11 @@ def authors_of_manga(mu_json: json.JSONEncoder) -> dict[int, dict[str, str]]:
                 author_json = requests.get(f'{AMUA}{author['author_id']}').json()
                 pos = author_json['name'].find(' (')
                 name_rom = author_json['name'][:pos] if pos != -1 else author_json['name']
-                authors[author['author_id']] = {
-                    'name_orig': author_json['actualname'],
-                    'name_rom': name_rom.lower().title()
-                }
+                if author['author_id'] not in authors:
+                    authors[author['author_id']] = {
+                        'name_orig': author_json['actualname'],
+                        'name_rom': name_rom.lower().title()
+                    }
             else:
                 authors[i] = {'name_rom': author['name'].lower().title()}
     return authors
