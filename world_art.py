@@ -806,7 +806,12 @@ def search_people(name_rom: str) -> dict[str, str] | None:
     """
     page = requests.get(WA + 'search.php', cookies=COOKIES_WA,
                         params={'public_search': name_rom, 'global_sector': "people"}).text
-    pos = page.find("people.php?id=") + 14
-    if pos != 13:
+    pos = 0
+    while True:
+        pos = page.find("people.php?id=", pos) + 14
+        if pos == 13:
+            return
         id_ = int(page[pos:page.find("'", pos)])
-        return people(id_)
+        p = people(id_)
+        if p['name_rom'] == name_rom:
+            return p

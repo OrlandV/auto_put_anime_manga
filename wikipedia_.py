@@ -297,39 +297,37 @@ def authors(page_part: str, *args) -> list[dict[str, str] | None]:
         Извлечение оригинального и ромадзи имён из HTML-страницы автора в WP.
         :return: Кортеж оригинального и ромадзи имён автора в WP.
         """
+        def normal_rom(_name: str) -> str:
+            _name = _name.split()
+            return normal_name(_name[1].lower()).title() + " " + normal_name(_name[0].lower()).title()
+
         pos = apage.find('<tr><th colspan="2" class="infobox-above" style="font-size:125%;">'
                          '<div style="display:inline;" class="fn">') + 106
         name_rom = ""
         if pos > 105:
-            name_ = apage[pos:apage.find("<", pos)].split()
-            name_rom = name_[1] + " " + name_[0]
+            name_rom = normal_rom(apage[pos:apage.find("<", pos)])
         else:
             pos = apage.find('<tr><th colspan="2" class="infobox-above" style="font-size:125%;">'
                              '<div class="fn">') + 82
             if pos == 81:
                 pos = apage.find('<tr><th colspan="2" class="infobox-above fn">') + 45
             if pos > 44:
-                name_ = apage[pos:apage.find("</div", pos)].split()
-                name_rom = name_[1] + " " + name_[0]
+                name_rom = normal_rom(apage[pos:apage.find("</div", pos)])
         name_orig = ""
-        pos = apage.find('<tr><td colspan="2" class="infobox-subheader" style="font-size:125%;">'
-                         '<div class="nickname" lang="ja">') + 102
-        if pos > 101:
+        if (pos := apage.find('<tr><td colspan="2" class="infobox-subheader" style="font-size:125%;">'
+                              '<div class="nickname" lang="ja">') + 102) > 101:
             name_orig = apage[pos:apage.find("</div", pos)]
-        else:
-            pos = apage.find('<span title="Japanese-language text"><span lang="ja">') + 53
-            if pos > 52:
-                pos2 = apage.find("</span>", pos)
-                pos1 = apage.find(" (", pos, pos2)
-                name_orig = apage[pos:pos1] if pos1 != -1 else apage[pos:pos2]
-                while '<' in name_orig:
-                    pos = name_orig.find('<')
-                    pos2 = name_orig.find('>', pos) + 1
-                    name_orig = name_orig[:pos] + name_orig[pos2:]
-                if not name_rom:
-                    pos = apage.find('<i lang="ja-Latn">', pos) + 18
-                    name_ = apage[pos:apage.find('</i>', pos)].split()
-                    name_rom = name_[1] + " " + name_[0]
+        elif (pos := apage.find('<span lang="ja">') + 16) > 15:
+            pos2 = apage.find("</span>", pos)
+            pos1 = apage.find(" (", pos, pos2)
+            name_orig = apage[pos:pos1] if pos1 != -1 else apage[pos:pos2]
+            while '<' in name_orig:
+                pos = name_orig.find('<')
+                pos2 = name_orig.find('>', pos) + 1
+                name_orig = name_orig[:pos] + name_orig[pos2:]
+            if not name_rom:
+                pos = apage.find('<i lang="ja-Latn">', pos) + 18
+                name_rom = apage[pos:apage.find('</i>', pos)]
         return name_orig, name_rom
 
     result = []

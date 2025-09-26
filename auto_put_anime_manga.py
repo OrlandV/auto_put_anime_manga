@@ -69,6 +69,16 @@ def wp_pages_in_wa(_wp_pages: dict[str, str], _wa_anime_pages: dict[int, str] | 
     return _wp_pages
 
 
+def search_wp_pages(search: str) -> dict[str, dict[str, str]]:
+    """
+    Сокращение кода поиска страниц в WP.
+    :param search: Искомое наименование.
+    :return: Переформатированный словарь частей страниц WP.
+    """
+    return wp.filter_page_parts(
+        wp.manga_anime_in_page(wp_pages_in_wa(wp.search_pages(search), wa_anime_pages, wa_manga_pages)))
+
+
 def mu_pages_in_wa(_mu_pages: dict[int, dict] | None, _wa_manga_pages: dict[int, str] | None) -> dict[int, dict] | None:
     """
     Получение JSON-ответов (основы или «выжимок» из страниц) от MU по ссылкам в страницах WA.
@@ -176,7 +186,9 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                             mdata['publication'] = mudata['publication']
                             break
                         for ap in mdata['publication']:
-                            if ap['publication'].replace(' ', '') == mp['publication'].replace(' ', ''):
+                            if (ap['publication'].replace(' ', '').
+                                    replace('Shuukan', '') == mp['publication'].replace(' ', '').
+                                    replace('Shuukan', '')):
                                 break
                         else:
                             mdata['publication'].append(mp)
@@ -474,7 +486,7 @@ def title_unique(_data: dict[str, list[dict[str, str | list[dict[str, str]] | in
         lt = len(titles)
         for a in range(lt - 1):
             for b in range(a + 1, lt):
-                if normal_name(titles[a][0]) == normal_name(titles[b][0]):
+                if titles[a][0] == titles[b][0]:
                     if int(titles[a][2][:4]) < int(titles[b][2][:4]):
                         _data[m][b]['name_orig'] += f" ({titles[b][2][:4]})"
                     elif int(titles[a][2][:4]) > int(titles[b][2][:4]):
@@ -516,7 +528,6 @@ if __name__ == '__main__':
     wa_anime_pages = wa.search_anime(title, year, form) if A_M == A else None
     wa_manga_pages = wa.search_manga(title, year) if A_M == M else None
     ann_anime_pages, ann_manga_pages, ann_rm = ann.search_pages(title, year, form)
-    wp_pages = wp.search_pages(title)
     mu_pages = mu.search_pages(title, year) if A_M == M else None
     if not mu_pages:
         mu_pages = mu.search_pages(title)
@@ -526,10 +537,11 @@ if __name__ == '__main__':
         wa_anime_pages = wa.anime_pages_from_manga(wa_anime_pages, wa_manga_pages)
     ann_anime_pages, ann_manga_pages, ann_rm = ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages,
                                                                wa_manga_pages)
-    wp_pages = wp.filter_page_parts(wp.manga_anime_in_page(wp_pages_in_wa(wp_pages, wa_anime_pages, wa_manga_pages)))
+    wp_pages = search_wp_pages(title)
     if not len(wp_pages):
-        wp_pages = wp.filter_page_parts(
-            wp.manga_anime_in_page(wp_pages_in_wa(wp.search_pages(f'{title} {M}'), wa_anime_pages, wa_manga_pages)))
+        wp_pages = search_wp_pages(f'{title} {M}')
+    if not len(wp_pages):
+        wp_pages = search_wp_pages(f'{title.replace("ou", "o")} {M}')
     mu_pages = mu_pages_in_wa(mu_pages, wa_manga_pages)
 
     # Извлечение данных из страниц

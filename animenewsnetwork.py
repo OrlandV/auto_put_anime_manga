@@ -273,8 +273,9 @@ def manga_date_of_premiere(ann_xml: str) -> str | None:
         return dn.month(ann_xml[pos:pos + 7])
     else:
         date = ann_xml[pos:pos + 10]
-        date_ = date.strip().split()
-        if len(date_) > 1:
+        if date[4:7] == "</i":
+            date = date[:4] + '-12-31'
+        elif len(date_ := date.strip().split()) > 1:
             date = date_[0] + '-12-31'
         dp = date_parser.parse(date).strftime('%Y-%m-%d')
         if dp != date:

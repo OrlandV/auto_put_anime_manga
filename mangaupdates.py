@@ -10,32 +10,43 @@ from constants import *
 from config import IGNORED_GENRES, GENRES_MU
 
 
-def manga_json(mu_id: int) -> json.JSONEncoder:
+def manga_json(mu_id: int) -> json.JSONEncoder | None:
     """
     Получение данных по манге в MU.
+    Если за 5 попыток нет результата — возвращается None.
     :param mu_id: ID манги в MU.
-    :return: Данные по манге в MU в JSON-формате.
+    :return: Данные по манге в MU в JSON-формате, либо None.
     """
-    sleep(1)
-    return requests.get(f'{AMUS}{mu_id}').json()
+    b = 0
+    while True:
+        sleep(1)
+        try:
+            result = requests.get(f'{AMUS}{mu_id}').json()
+        except requests.Timeout:
+            b += 1
+            if b == 5:
+                return
+            continue
+        return result
 
 
-def search_pages_id(mangas: dict[int, json.JSONEncoder] | None, mu_id: int) -> dict[int, json.JSONEncoder]:
+def search_pages_id(mangas: dict[int, json.JSONEncoder] | None, mu_id: int) -> dict[int, json.JSONEncoder] | None:
     """
     Получение данных по манге из MU, включая по связанной манге.
     :param mangas: Словарь {ID: JSON} полных JSON-словарей данных по манге в MU.
     :param mu_id: ID манги в MU.
-    :return: Словарь {ID: JSON} полных JSON-словарей данных по манге в MU.
+    :return: Словарь {ID: JSON} полных JSON-словарей данных по манге в MU, либо None.
     """
     manga = manga_json(mu_id)
-    if not mangas:
-        mangas = {}
-    mangas[mu_id] = manga
-    for rs in manga['related_series']:
-        if (rs['related_series_id'] not in mangas and 'related_series_name' in rs and
-                rs['related_series_name'] and '(Novel)' not in rs['related_series_name']):
-           mangas = search_pages_id(mangas, rs['related_series_id'])
-    return mangas
+    if manga:
+        if not mangas:
+            mangas = {}
+        mangas[mu_id] = manga
+        for rs in manga['related_series']:
+            if (rs['related_series_id'] not in mangas and 'related_series_name' in rs and
+                    rs['related_series_name'] and '(Novel)' not in rs['related_series_name']):
+               mangas = search_pages_id(mangas, rs['related_series_id'])
+        return mangas
 
 
 def search_pages(search: str, year: int | None = None) -> dict[int, json.JSONEncoder] | None:
@@ -197,7 +208,7 @@ def genres(mu_json: json.JSONEncoder) -> list[str]:
                 with open('new_genres.txt', 'r', encoding='utf8') as file:
                     ng = file.readlines()
                 for g in ng:
-                    if ' ' in g and g[:g.find(':')] == genre:
+                    if ' ' in g and g[:g.find(':')] == genre['genre']:
                         result.append(g[g.find(':') + 2:-1])
                         break
                 else:
