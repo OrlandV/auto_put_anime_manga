@@ -43,13 +43,10 @@ def ann_pages_in_wa(_ann_anime_pages: dict[int, str], _ann_manga_pages: dict[int
     return ann.pages(_ann_anime_pages, _ann_manga_pages)
 
 
-def wp_pages_in_wa(_wp_pages: dict[str, str], _wa_anime_pages: dict[int, str] | None,
-                   _wa_manga_pages: dict[int, str] | None) -> dict[str, str]:
+def wp_pages_in_wa(search: str) -> dict[str, str]:
     """
     Получение HTML-страниц из WP по ссылкам в страницах WA.
-    :param _wp_pages: Словарь {WP_title_date: HTML} HTML-страниц из WP.
-    :param _wa_anime_pages: Словарь {WA_ID: HTML} HTML-страниц anime из WA либо None.
-    :param _wa_manga_pages: Словарь {WA_ID: HTML} HTML-страниц манги из WA либо None.
+    :param search: Искомое наименование.
     :return: Словарь {WP_title_date: HTML} HTML-страниц из WP.
     """
     def proc():
@@ -60,23 +57,14 @@ def wp_pages_in_wa(_wp_pages: dict[str, str], _wa_anime_pages: dict[int, str] | 
             if wp_title not in _wp_pages:
                 _wp_pages.update(wp.search_pages(wp_title))
 
-    if _wa_anime_pages:
-        for page in _wa_anime_pages.values():
+    _wp_pages = wp.search_pages(search)
+    if wa_anime_pages:
+        for page in wa_anime_pages.values():
             proc()
-    if _wa_manga_pages:
-        for page in _wa_manga_pages.values():
+    if wa_manga_pages:
+        for page in wa_manga_pages.values():
             proc()
     return _wp_pages
-
-
-def search_wp_pages(search: str) -> dict[str, dict[str, str]]:
-    """
-    Сокращение кода поиска страниц в WP.
-    :param search: Искомое наименование.
-    :return: Переформатированный словарь частей страниц WP.
-    """
-    return wp.filter_page_parts(
-        wp.manga_anime_in_page(wp_pages_in_wa(wp.search_pages(search), wa_anime_pages, wa_manga_pages)))
 
 
 def mu_pages_in_wa(_mu_pages: dict[int, dict] | None, _wa_manga_pages: dict[int, str] | None) -> dict[int, dict] | None:
@@ -150,8 +138,15 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                     for tit in ('number_of_volumes', 'number_of_chapters'):
                         if (tit not in mdata or not mdata[tit]) and wpdata[tit]:
                             mdata[tit] = wpdata[tit]
-                    if not len(mdata['publication']) and len(wpdata['publication']):
-                        mdata['publication'].append(wpdata['publication'])
+                    for mp in wpdata['publication']:
+                        if not len(mdata['publication']):
+                            mdata['publication'] = wpdata['publication']
+                            break
+                        for ap in mdata['publication']:
+                            if ap['publication'].replace(' ', '') == mp['publication'].replace(' ', ''):
+                                break
+                        else:
+                            mdata['publication'].append(mp)
                     ids[M]['WP'].append(wpt)
 
     def mmu(_i: int = 0) -> None:
@@ -186,9 +181,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                             mdata['publication'] = mudata['publication']
                             break
                         for ap in mdata['publication']:
-                            if (ap['publication'].replace(' ', '').
-                                    replace('Shuukan', '') == mp['publication'].replace(' ', '').
-                                    replace('Shuukan', '')):
+                            if ap['publication'].replace(' ', '') == mp['publication'].replace(' ', ''):
                                 break
                         else:
                             mdata['publication'].append(mp)
@@ -329,12 +322,12 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 'number_of_volumes': wpdata['number_of_volumes'] if wpdata['number_of_volumes'] else None,
                 'number_of_chapters': wpdata['number_of_chapters'] if wpdata['number_of_chapters'] else None,
                 'date_of_premiere': wpdata['date_of_premiere'] if wpdata['date_of_premiere'] else None,
-                'publication': [wpdata['publication']],
+                'publication': wpdata['publication'],
                 'genre': []
             }
             ids[M]['WP'].append(wpt)
             ip = len(mdata['publication'])
-            for i in range(0, ip):
+            for i in range(ip):
                 if not mdata['publication'][ip - i - 1]['publication']:
                     mdata['publication'].pop(ip - i - 1)
             mmu()
@@ -537,11 +530,14 @@ if __name__ == '__main__':
         wa_anime_pages = wa.anime_pages_from_manga(wa_anime_pages, wa_manga_pages)
     ann_anime_pages, ann_manga_pages, ann_rm = ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages,
                                                                wa_manga_pages)
-    wp_pages = search_wp_pages(title)
-    if not len(wp_pages):
-        wp_pages = search_wp_pages(f'{title} {M}')
-    if not len(wp_pages):
-        wp_pages = search_wp_pages(f'{title.replace("ou", "o")} {M}')
+    wp_pages = wp_pages_in_wa(title)
+    wp_page_parts = wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))
+    if not len(wp_page_parts):
+        wp_pages = wp_pages_in_wa(f'{title} {M}')
+        wp_page_parts = wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))
+    if not len(wp_page_parts):
+        wp_pages = wp_pages_in_wa(f'{title.replace("ou", "o")} {M}')
+        wp_page_parts = wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))
     mu_pages = mu_pages_in_wa(mu_pages, wa_manga_pages)
 
     # Извлечение данных из страниц
@@ -557,7 +553,7 @@ if __name__ == '__main__':
     if ann_anime_pages and len(ann_anime_pages):
         ann_data[A] = {id_: ann.extraction_anime(ann_xml, ann_rm[id_] if id_ in ann_rm else None)
                        for id_, ann_xml in ann_anime_pages.items()}
-    wp_data = wp.extraction_data(wp_pages) if len(wp_pages) else None
+    wp_data = wp.extraction_data(wp_page_parts, wp_pages) if len(wp_page_parts) else None
     mu_data = {id_: mu.extraction_manga(page) for id_, page in mu_pages.items()} if mu_pages and len(mu_pages) else None
 
     # Формирование единого словаря данных

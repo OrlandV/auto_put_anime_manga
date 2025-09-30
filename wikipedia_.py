@@ -51,43 +51,43 @@ def search_pages(search: str) -> dict[str, str]:
     :return: Словарь {title_norm: HTML} страниц в WP.
     """
     search_ = normal_name(search)
-    page = html(search_)
+    _page = html(search_)
     if (('<div class="shortdescription nomobile noexcerpt noprint searchaux" style="display:none">'
-         'Name list</div>') in page or page == '404' or (M not in search_ and search_ not in normal_name(page)) or
-            (M in search_ and search_[:-6] not in normal_name(page))):
+         'Name list</div>') in _page or _page == '404' or (M not in search_ and search_ not in normal_name(_page)) or
+            (M in search_ and search_[:-6] not in normal_name(_page))):
         return {}
-    res = {search_: page}
-    posb = page.find('<table') + 7
-    if page.find('class="box-Lead_too_short', posb) != -1:
-        posb = page.find('<table', posb) + 7
-    pose = page.find('</table>', posb)
-    pos = page.find('class="infobox-full-data"', posb, pose)
+    res = {search_: _page}
+    posb = _page.find('<table') + 7
+    if _page.find('class="box-Lead_too_short', posb) != -1:
+        posb = _page.find('<table', posb) + 7
+    pose = _page.find('</table>', posb)
+    pos = _page.find('class="infobox-full-data"', posb, pose)
     if pos != -1:
-        pos1 = page.find('class="infobox-subheader"', posb, pose) + 25
+        pos1 = _page.find('class="infobox-subheader"', posb, pose) + 25
         while pos1 > 24 and pos > 0:
-            pos2 = page.find('class="infobox-subheader"', pos1, pose)
+            pos2 = _page.find('class="infobox-subheader"', pos1, pose)
             if pos2 == -1:
                 pos2 = pose
             if pos2 > pos:
-                pos = page.find('>', pos1, pos) + 1
+                pos = _page.find('>', pos1, pos) + 1
                 if pos == 0:
                     break
-                t = page[pos:page.find('<', pos, pos2)]
+                t = _page[pos:_page.find('<', pos, pos2)]
                 if 'Anime' in t or 'Manga' in t:
-                    posu = page.find('<ul>', pos, pos2) + 4
+                    posu = _page.find('<ul>', pos, pos2) + 4
                     if posu != 3:
-                        posl = page.find('</ul>', posu, pos2)
-                        posi = page.find('<i>', posu, posl) + 3
+                        posl = _page.find('</ul>', posu, pos2)
+                        posi = _page.find('<i>', posu, posl) + 3
                         if posi != 2:
                             post = posu
                             while True:
-                                post = page.find('title="', post, posl) + 7
+                                post = _page.find('title="', post, posl) + 7
                                 if post == 6:
                                     break
-                                ttl = page[post:page.find('"', post, posl)]
+                                ttl = _page[post:_page.find('"', post, posl)]
                                 res.update(search_pages(ttl))
             pos1 = pos2 + 25
-            pos = page.find('class="infobox-full-data"', pos1, pose)
+            pos = _page.find('class="infobox-full-data"', pos1, pose)
     return res
 
 
@@ -242,8 +242,8 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, str]]]) -> dict[str, 
     }
     """
     res = {}
-    for page in pages.values():
-        for am, page_parts in page.items():
+    for _page in pages.values():
+        for am, page_parts in _page.items():
             if am not in res:
                 res[am] = {}
             for ttl, page_part in page_parts.items():
@@ -258,6 +258,50 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, str]]]) -> dict[str, 
                     ttl += f' ({date_of_premiere(page_part)})'
                     res[am][title_index(res[am], ttl)] = page_part
     return res
+
+
+def _count_li(_page: str, pos1: int, pos2: int) -> int:
+    """
+    Счётчик тега <li> в указанном отрезке строки HTML-кода.
+    :param _page: Строка HTML-кода.
+    :param pos1: Начало отрезка поиска.
+    :param pos2: Конец отрезка поиска.
+    :return: Количество тегов <li>.
+    """
+    res = -1
+    while pos1 > 3:
+        res += 1
+        pos1 = _page.find('<li>', pos1, pos2) + 4
+    return res
+
+
+def number_of_chapters(page_part: str) -> int:
+    """
+    Извлечение количества глав манги из соответствующей части инфоблока в WP.
+    :param page_part: Часть страницы манги в WP (HTML-код).
+    :return: Количество глав манги в WP. 0 — нет данных.
+    """
+    pos = page_part.find('<tr><th scope="row" class="infobox-label">Volumes</th>') + 54
+    posb = page_part.find('</td></tr>', pos)
+    pos = page_part.find('<a href="/wiki/', pos, posb) + 15
+    if pos == 14:
+        return 0
+    vol_page = page(page_part[pos:page_part.find('"', pos, posb)])
+    pos = vol_page.find('<h2 id="Volume_list">Volume list</h2>') + 37
+    posb = vol_page.find('<div class="mw-heading mw-heading2">', pos)
+    return _count_li(vol_page, pos, posb)
+
+
+def number_of_chapters_2(_page: str) -> int:
+    """
+    Извлечение количества глав манги из страницы манги в WP.
+    :param _page: Страница манги в WP (HTML-код).
+    :return: Количество глав манги в WP. 0 — нет данных.
+    """
+    pos = _page.find('<h4 id="Chapter_list">Chapter list</h4>') + 39
+    pos = _page.find('<table', pos)
+    posf = _page.find('</table>', pos)
+    return _count_li(_page, pos, posf)
 
 
 def title(page_part: str) -> str:
@@ -396,63 +440,65 @@ def number_of_volumes(page_part: str) -> int:
     return int(page_part[pos:pos2])
 
 
-def number_of_chapters(page_part: str) -> int:
-    """
-    Извлечение количества глав манги из соответствующей части инфоблока в WP.
-    :param page_part: Часть страницы манги в WP (HTML-код).
-    :return: Количество глав манги в WP. 0 — нет данных.
-    """
-    pos = page_part.find('<tr><th scope="row" class="infobox-label">Volumes</th>') + 54
-    posb = page_part.find('</td></tr>', pos)
-    pos = page_part.find('<a href="/wiki/', pos, posb) + 15
-    if pos == 14:
-        return 0
-    vol_page = page(page_part[pos:page_part.find('"', pos, posb)])
-    pos = vol_page.find('<h2 id="Volume_list">Volume list</h2>') + 37
-    posb = vol_page.find('<div class="mw-heading mw-heading2">', pos)
-    res = 0
-    while True:
-        pos = vol_page.find('<li>', pos, posb) + 4
-        if pos == 3:
-            break
-        res += 1
-    return res
-
-
-def publications(page_part: str) -> dict[str, str]:
+def publications(page_part: str) -> list[dict[str, str | int]]:
     """
     Извлечение наименований издательства и издания в WP.
     :param page_part: Часть страницы манги в WP (HTML-код).
     :return: Список наименований издательства и издания в WP.
     """
-    res = {}
+    res = {'publication': []}
     for pp, tpp in {'publishing': "Published&#160;by", 'publication': "Magazine"}.items():
         st = f'<tr><th scope="row" class="infobox-label">{tpp}</th>'
         lst = len(st)
         posa = page_part.find(st) + lst
         if posa > lst - 1:
             posb = page_part.find('</td></tr>', posa)
-            pos = page_part.find('title="', posa, posb) + 7
+            pos1 = page_part.find('<ul>', posa, posb) + 4
+            if pos1 > 3:
+                pos2 = page_part.find('</ul>', pos1, posb)
+                pos1 = page_part.find('<li>', pos1, pos2) + 4
+                while pos1 > 3:
+                    if '<a ' in page_part[pos1:pos1 + 3]:
+                        pos = page_part.find('title=', pos1, posb) + 7
+                        if pos == 6:
+                            pos = posa + lst
+                            while '<' in page_part[pos:pos + 1]:
+                                pos = page_part.find('>', pos, pos2) + 1
+                            res[pp].append(page_part[pos:page_part.find('</a>', pos, pos2)])
+                        else:
+                            res[pp].append(page_part[pos:page_part.find('"', pos, pos2)])
+                    else:
+                        res[pp].append(page_part[pos1:page_part.find('</li>', pos1, pos2)])
+                    pos1 = page_part.find('<li>', pos1, pos2) + 4
+            else:
+                pos = page_part.find('title="', posa, posb) + 7
             if pos > 6:
-                res[pp] = page_part[pos:page_part.find('"', pos)]
+                if pp == "publishing":
+                    res[pp] = page_part[pos:page_part.find('"', pos)]
             else:
                 pos = page_part.find('<td class="infobox-data">', posa, posb) + 25
                 if '<i>' in page_part[pos:posb]:
                     pos = pos + 3
                     posb = posb - 4
-                res[pp] = frequency(page_part[pos:posb])
-            res[pp] = res[pp].replace("MediaWorks", "Media Works").removesuffix(" (publisher)")
+                res[pp].append(page_part[pos:posb])
+            if pp == 'publication':
+                res[pp] = [frequency(tmp).replace("MediaWorks", "Media Works").removesuffix(" (publisher)")
+                           for tmp in res[pp]]
         elif pp == 'publication':
-            res.update({pp: f'? ({res['publishing']})', 'type': 2})
+            res.update({pp: [f'? ({res['publishing']})'], 'type': 2})
         else:
             break
+    res = [{'publication': pc, 'publishing': res['publishing'], 'type': 2 if 'type' in res and res['type'] == 2 else 1}
+           for pc in res['publication']]
     return res
 
 
-def extraction_manga(page_part: str) -> dict[str, str | list[dict[str, str] | None] | int | list[str | None]]:
+def extraction_manga(page_part: str, _page: str
+                     ) -> dict[str, str | list[dict[str, str] | None] | int | list[str | None]]:
     """
     Извлечение данных по манге из соответствующей части инфоблока в WP.
     :param page_part: Часть страницы манги в WP (HTML-код).
+    :param _page: Страница манги в WP (HTML-код).
     :return: Словарь данных по манге в WP:
     {
         'name_eng': str,
@@ -460,14 +506,17 @@ def extraction_manga(page_part: str) -> dict[str, str | list[dict[str, str] | No
         'number_of_volumes': int,
         'number_of_chapters': int,
         'date_of_premiere': str,
-        'publication': dict[str, str]
+        'publication': list[dict[str, str | int]]
     }
     """
+    nc = number_of_chapters(page_part)
+    if not nc:
+        nc = number_of_chapters_2(_page)
     result = {
         'name_eng': title(page_part),
         'author_of_manga': authors(page_part, "Written", "Illustrated"),
         'number_of_volumes': number_of_volumes(page_part),
-        'number_of_chapters': number_of_chapters(page_part),
+        'number_of_chapters': nc,
         'date_of_premiere': date_of_premiere(page_part),
         'publication': publications(page_part)
     }
@@ -575,11 +624,12 @@ def extraction_anime(page_part: str) -> dict[str, str | int | list[str] | list[d
     return result
 
 
-def extraction_data(page_parts: dict[str, dict[str, str]]
+def extraction_data(page_parts: dict[str, dict[str, str]], _pages: dict[str, str]
                     ) -> dict[str, dict[str, str | int | list[str | None] | list[dict[str, str] | None] | None]]:
     """
     Извлечение данных из частей инфоблоков в WP.
     :param page_parts: Словарь частей страниц — результат manga_anime_in_page.
+    :param _pages: Словарь HTML-страниц из WP.
     :return: Словарь словарей данных по манге и anime в WP.
     """
     res = {}
@@ -587,5 +637,6 @@ def extraction_data(page_parts: dict[str, dict[str, str]]
         if am not in res:
             res[am] = {}
         for tit, page_part in pages.items():
-            res[am][tit] = extraction_anime(page_part) if am == A else extraction_manga(page_part)
+            res[am][tit] = (extraction_anime(page_part) if am == A else
+                            extraction_manga(page_part, _pages[tit[:tit.find(" (")]]))
     return res

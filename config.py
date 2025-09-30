@@ -47,6 +47,7 @@ GENRES_MU = {
     'Adventure': 'приключения',
     'Comedy': 'комедия',
     'Drama': 'драма',
+    'Ecchi': 'этти',
     'Fantasy': 'фэнтези',
     'Hentai': 'эротика',
     'Horror': 'ужасы',

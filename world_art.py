@@ -527,6 +527,8 @@ def publications(page: str) -> dict[int, dict[str, str]]:
         posa = page_.find('company.php', posa, posb)
         posa = page_.find("class='review'>", posa, posb) + 15
         publishing = page_[posa:page_.find('</a>', posa, posb)]
+        if publication == "Morning":
+            publication = "Shuukan Morning"
         result[id_] = {'publication': publication, 'publishing': publishing}
     return result
 

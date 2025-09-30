@@ -179,7 +179,9 @@ def publications(mu_json: json.JSONEncoder) -> list[dict[str, str | int]] | None
         return
     res = []
     for publication in mu_json['publications']:
-        res.append({'publication': publication['publication_name'], 'publishing': publication['publisher_name']})
+        res.append({'publication': (publication['publication_name'].replace("Afternoon", "Gekkan Afternoon").
+                                    replace("Morning", "Shuukan Morning")),
+                    'publishing': publication['publisher_name']})
     for i in range(len(res)):
         if not res[i]['publishing'] and mu_json['publishers'][i]['publisher_name']:
             res[i]['publishing'] = mu_json['publishers'][i]['publisher_name']
