@@ -6,7 +6,7 @@ import requests
 import wikipedia
 import dateutil.parser as date_parser
 
-from decode_name import normal_name, month, title_index, hours_minutes
+import decode_name as dn
 from constants import *
 from config import FORM_WP, frequency
 
@@ -50,11 +50,11 @@ def search_pages(search: str) -> dict[str, str]:
     :param search: Искомое наименование.
     :return: Словарь {title_norm: HTML} страниц в WP.
     """
-    search_ = normal_name(search)
+    search_ = dn.normal_name(search)
     _page = html(search_)
     if (('<div class="shortdescription nomobile noexcerpt noprint searchaux" style="display:none">'
-         'Name list</div>') in _page or _page == '404' or (M not in search_ and search_ not in normal_name(_page)) or
-            (M in search_ and search_[:-6] not in normal_name(_page))):
+         'Name list</div>') in _page or _page == '404' or (M not in search_ and search_ not in dn.normal_name(_page)) or
+            (M in search_ and search_[:-6] not in dn.normal_name(_page))):
         return {}
     res = {search_: _page}
     posb = _page.find('<table') + 7
@@ -131,6 +131,8 @@ def manga_anime_in_page(pages: dict[str, str]) -> dict[str, dict[str, dict[str, 
         while pos1 > l1 - 1:
             pos2 = page.find('class="infobox-subheader"', pos1 + l1, pose)
             if pos2 == -1:
+                pos2 = page.find('<link ', pos1 + l1, pose)
+            if pos2 == -1:
                 pos2 = pose
             if 'class="infobox-full-data"' not in page[pos1:pos2]:
                 pos = page.find('>', pos1, pos2) + 1
@@ -144,9 +146,12 @@ def manga_anime_in_page(pages: dict[str, str]) -> dict[str, dict[str, dict[str, 
                 if 'Manga' in t or 'anim' in t.lower():
                     posa = page.find('<tr><th colspan="2" class="infobox-header" style="background:#EEF; '
                                      'font-weight:normal;"><i>', pos1, pos2) + 91
-                    if posa != 90:
+                    if posa == 90:
+                        posa = page.find('<tr><th colspan="2" class="infobox-header" style="background:#EEF; '
+                                         'color:black; font-weight:normal;"><i>', pos1, pos2) + 104
+                    if posa > 103:
                         posb = page.find('<', posa, pos2)
-                        ttl = normal_name(page[posa:posb])
+                        ttl = dn.normal_name(page[posa:posb])
                     else:
                         ttl = page_title_norm.removesuffix(" manga")
                     am = M if 'Manga' in t else A
@@ -211,7 +216,7 @@ def date_of_premiere(page_part: str) -> str | None:
         return date_parser.parse(date).strftime('%Y') + '-12-31'
     date_ = date.split(' ')
     if len(date_) == 2 and ((date_[0].isdigit() and len(date_[0]) == 4) or (date_[1].isdigit() and len(date_[1]) == 4)):
-        return month(date)
+        return dn.month(date)
     elif len(date_) == 2:
         pos2 = page_part.find('</span>', pos1, pose)
         if pos2 != -1 and 'start' in page_part[pos1:pos2]:
@@ -222,27 +227,35 @@ def date_of_premiere(page_part: str) -> str | None:
     return date_parser.parse(date).strftime('%Y-%m-%d')
 
 
-def filter_page_parts(pages: dict[str, dict[str, dict[str, str]]]) -> dict[str, dict[str, str]]:
+def filter_page_parts(pages: dict[str, dict[str, dict[str, str]]]) -> dict[str, dict[str, dict[str, str]]]:
     """
     Фильтр частей страниц, удаляющий повторы, и переформатирование словаря частей страниц.
     :param pages: Словарь частей страниц — результат manga_anime_in_page.
     :return: Словарь
     {
         'manga': {
-            title_norm: page_part,
+            title_norm: {
+                'page_part': str,
+
+                'page_title': str
+            },
 
             ...
         },
 
         'anime': {
-            title_norm: page_part,
+            title_norm: {
+                'page_part': str,
+
+                'page_title': str
+            },
 
             ...
         }
     }
     """
     res = {}
-    for _page in pages.values():
+    for page_title, _page in pages.items():
         for am, page_parts in _page.items():
             if am not in res:
                 res[am] = {}
@@ -256,7 +269,7 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, str]]]) -> dict[str, 
                     if am == A:
                         ttl = ttl.replace(' (Original video animation)', ' (OVA)')
                     ttl += f' ({date_of_premiere(page_part)})'
-                    res[am][title_index(res[am], ttl)] = page_part
+                    res[am][dn.title_index(res[am], ttl)] = {'page_part': page_part, 'page_title': page_title}
     return res
 
 
@@ -299,6 +312,8 @@ def number_of_chapters_2(_page: str) -> int:
     :return: Количество глав манги в WP. 0 — нет данных.
     """
     pos = _page.find('<h4 id="Chapter_list">Chapter list</h4>') + 39
+    if pos == 38:
+        return 0
     pos = _page.find('<table', pos)
     posf = _page.find('</table>', pos)
     return _count_li(_page, pos, posf)
@@ -343,7 +358,7 @@ def authors(page_part: str, *args) -> list[dict[str, str] | None]:
         """
         def normal_rom(_name: str) -> str:
             _name = _name.split()
-            return normal_name(_name[1].lower()).title() + " " + normal_name(_name[0].lower()).title()
+            return dn.normal_name(_name[1].lower()).title() + " " + dn.normal_name(_name[0].lower()).title()
 
         pos = apage.find('<tr><th colspan="2" class="infobox-above" style="font-size:125%;">'
                          '<div style="display:inline;" class="fn">') + 106
@@ -473,22 +488,23 @@ def publications(page_part: str) -> list[dict[str, str | int]]:
             else:
                 pos = page_part.find('title="', posa, posb) + 7
             if pos > 6:
-                if pp == "publishing":
-                    res[pp] = page_part[pos:page_part.find('"', pos)]
+                tmp = page_part[pos:page_part.find('"', pos)]
             else:
                 pos = page_part.find('<td class="infobox-data">', posa, posb) + 25
                 if '<i>' in page_part[pos:posb]:
                     pos = pos + 3
                     posb = posb - 4
-                res[pp].append(page_part[pos:posb])
-            if pp == 'publication':
-                res[pp] = [frequency(tmp).replace("MediaWorks", "Media Works").removesuffix(" (publisher)")
-                           for tmp in res[pp]]
+                tmp = page_part[pos:posb]
+            if pp == "publishing":
+                res[pp] = tmp
+            else:
+                res[pp].append(tmp)
         elif pp == 'publication':
             res.update({pp: [f'? ({res['publishing']})'], 'type': 2})
         else:
             break
-    res = [{'publication': pc, 'publishing': res['publishing'], 'type': 2 if 'type' in res and res['type'] == 2 else 1}
+    res = [{'publication': frequency(dn.o_ou(pc)).replace("MediaWorks", "Media Works").removesuffix(" (publisher)"),
+            'publishing': res['publishing'], 'type': 2 if 'type' in res and res['type'] == 2 else 1}
            for pc in res['publication']]
     return res
 
@@ -560,7 +576,7 @@ def duration(page_part: str) -> str | None:
         if pos2 != -1:
             pos1 = page_part.find('–', pos, pos2) + 1
             dur = page_part[pos1:pos2] if pos1 != 0 else page_part[pos:pos2]
-            return hours_minutes(int(dur)) if dur.isdigit() else None
+            return dn.hours_minutes(int(dur)) if dur.isdigit() else None
 
 
 def studios(page_part: str) -> list[str] | None:
@@ -624,11 +640,11 @@ def extraction_anime(page_part: str) -> dict[str, str | int | list[str] | list[d
     return result
 
 
-def extraction_data(page_parts: dict[str, dict[str, str]], _pages: dict[str, str]
+def extraction_data(page_parts: dict[str, dict[str, dict[str, str]]], _pages: dict[str, str]
                     ) -> dict[str, dict[str, str | int | list[str | None] | list[dict[str, str] | None] | None]]:
     """
     Извлечение данных из частей инфоблоков в WP.
-    :param page_parts: Словарь частей страниц — результат manga_anime_in_page.
+    :param page_parts: Словарь частей страниц — результат filter_page_parts.
     :param _pages: Словарь HTML-страниц из WP.
     :return: Словарь словарей данных по манге и anime в WP.
     """
@@ -637,6 +653,6 @@ def extraction_data(page_parts: dict[str, dict[str, str]], _pages: dict[str, str
         if am not in res:
             res[am] = {}
         for tit, page_part in pages.items():
-            res[am][tit] = (extraction_anime(page_part) if am == A else
-                            extraction_manga(page_part, _pages[tit[:tit.find(" (")]]))
+            res[am][tit] = (extraction_anime(page_part['page_part']) if am == A else
+                            extraction_manga(page_part['page_part'], _pages[page_part['page_title']]))
     return res

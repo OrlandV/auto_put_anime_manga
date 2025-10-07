@@ -15,14 +15,23 @@ def decode_name(name: str) -> str:
     return re.sub(r'&#(\d+);', lambda m: chr(int(m[1])), name)
 
 
+def o_ou(name: str) -> str:
+    """
+    Функция-сокращение записи замены символов «ō» и «ū» на «ou» и «uu».
+    :param name: Наименование.
+    :return: Отредактированное наименование.
+    """
+    # Используется в модулях отдельно.
+    return name.replace('ō', 'ou').replace('ū', 'uu')
+
+
 def normal_name(name: str) -> str:
     """
     Нормализация наименования. Удаление пунктуации и замена символов «ō» и «ū» на «ou» и «uu».
     :param name: Наименование.
     :return: Нормализованное наименование.
     """
-    name = (name.lower().replace('ō', 'ou').replace('ū', 'uu').replace('×', 'x')
-            .replace('_', ' ').replace('ö', 'o').strip())
+    name = o_ou(name).lower().replace('×', 'x').replace('_', ' ').replace('ö', 'o').strip()
     chars = 'abcdefghijklmnopqrstuvwxyz 0123456789'
     name2 = ''
     for i in range(len(name)):

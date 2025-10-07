@@ -304,7 +304,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 for ap in anndata['publication'].values():
                     mdata['publication'].append(ap)
             ids[M]['ANN'].append(annid)
-            mwp()
+            mwp(1)
             mmu()
             mdata['notes'] = notes(mdata)
             mdata = not_none()
@@ -524,6 +524,7 @@ if __name__ == '__main__':
     mu_pages = mu.search_pages(title, year) if A_M == M else None
     if not mu_pages:
         mu_pages = mu.search_pages(title)
+    wa_rm = {}
     if wa_anime_pages and len(wa_anime_pages):
         wa_manga_pages, wa_rm = wa.manga_pages_from_anime(wa_manga_pages, wa_anime_pages)
     if wa_manga_pages and len(wa_manga_pages):

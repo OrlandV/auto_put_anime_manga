@@ -20,6 +20,33 @@ def xml(id_: int) -> str:
     return requests.get(f'{CANNE}api.xml', {'title': id_}).text
 
 
+def manga_date_of_premiere(ann_xml: str) -> str | None:
+    """
+    Извлечение даты премьеры манги из XML-страницы в ANN.
+    :param ann_xml: XML-страница в ANN.
+    :return: Дата премьеры или None.
+    """
+    pos = ann_xml.find(' type="Vintage"') + 15
+    if pos == 14:
+        return
+    pos = ann_xml.find('>', pos) + 1
+    if ann_xml[pos + 7:pos + 10] == '</i' or ann_xml[pos + 8:pos + 10] == 'to':
+        return dn.month(ann_xml[pos:pos + 7])
+    elif '(' in ann_xml[pos:pos + 10]:
+        pos2 = ann_xml.find(" ", pos)
+    else:
+        pos2 = pos + 10
+    date = ann_xml[pos:pos2]
+    if len(date) == 4:
+        date += '-12-31'
+    elif len(date_ := date.strip().split()) > 1:
+        date = date_[0] + '-12-31'
+    dp = date_parser.parse(date).strftime('%Y-%m-%d')
+    if dp != date:
+        return
+    return date
+
+
 def pages(animes: dict[int, str], mangas: dict[int, str]) -> tuple[dict[int, str], dict[int, str], dict[int, int]]:
     """
     Поиск и получение XML-страниц манги и anime в ANN на базе уже полученных XML-страниц.
@@ -259,30 +286,6 @@ def number_of_volumes(ann_xml: str) -> int | None:
         return int(ann_xml[pos:ann_xml.find('<', pos)])
 
 
-def manga_date_of_premiere(ann_xml: str) -> str | None:
-    """
-    Извлечение даты премьеры манги из XML-страницы в ANN.
-    :param ann_xml: XML-страница в ANN.
-    :return: Дата премьеры или None.
-    """
-    pos = ann_xml.find(' type="Vintage"') + 15
-    if pos == 14:
-        return
-    pos = ann_xml.find('>', pos) + 1
-    if ann_xml[pos + 7:pos + 10] == '</i' or ann_xml[pos + 8:pos + 10] == 'to' or '(' in ann_xml[pos:pos + 10]:
-        return dn.month(ann_xml[pos:pos + 7])
-    else:
-        date = ann_xml[pos:pos + 10]
-        if date[4:7] == "</i":
-            date = date[:4] + '-12-31'
-        elif len(date_ := date.strip().split()) > 1:
-            date = date_[0] + '-12-31'
-        dp = date_parser.parse(date).strftime('%Y-%m-%d')
-        if dp != date:
-            return
-        return date
-
-
 def publication(mid: int, ann_xml: str) -> dict[int, dict[str, str]] | None:
     """
     Извлечение издания манги из XML-страницы в ANN.
@@ -314,7 +317,8 @@ def publication(mid: int, ann_xml: str) -> dict[int, dict[str, str]] | None:
         pos = m_html.find(f'{M}.php?id=', pos, pose) + 13
         id_ = int(m_html[pos:m_html.find('"', pos, pose)])
     pos1 = ann_xml.find('type="Vintage"') + 15
-    pose = min([ann_xml.find(s, pos1) for s in ('<ratings ', '<review ', '<staff ') if ann_xml.find(s, pos1) > 0])
+    pose = min([ann_xml.find(s, pos1) for s in ('<ratings ', '<review ', '<news ', '<staff ')
+                if ann_xml.find(s, pos1) > 0])
     pos = ann_xml.find('serialized in ', pos1, pose) + 14
     if pos == 13:
         publishing_ = publishing()
@@ -324,10 +328,11 @@ def publication(mid: int, ann_xml: str) -> dict[int, dict[str, str]] | None:
         pos2 = ann_xml.find(', ', pos, pose)
         if pos2 == -1:
             pos2 = ann_xml.find(')', pos, pose)
-        name = frequency(ann_xml[pos:pos2])
         publishing_ = publishing()
         if publishing_:
-            result[id_] = {'publication': name, 'publishing': publishing_, 'type': 1}
+            result[id_] = {'publication': (frequency(dn.o_ou(ann_xml[pos:pos2])).
+                                           replace("Gekkan Shounen Sunday", "Gekkan Shounen Magazine")),
+                           'publishing': publishing_, 'type': 1}
     return result if len(result) else None
 
 
