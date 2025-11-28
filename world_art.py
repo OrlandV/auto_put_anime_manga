@@ -3,6 +3,7 @@
 """
 import requests
 from time import sleep
+from urllib.parse import unquote
 
 from decode_name import points_codes, decode_name, hours_minutes
 from constants import *
@@ -20,7 +21,7 @@ def html(id_: int, am: bool = False, url: str | None = None) -> str:
     if not url:
         url = WAAM if am else WAAA
     sleep(1)
-    return requests.get(url, {'id': id_}, cookies=COOKIES_WA).text
+    return decode_name(requests.get(url, {'id': id_}, cookies=COOKIES_WA).text)
 
 
 def anime_pages(aid: int) -> dict[int, str]:
@@ -29,6 +30,7 @@ def anime_pages(aid: int) -> dict[int, str]:
     :param aid: ID anime в WA.
     :return: Словарь страниц в WA.
     """
+    print(f"- - wa.anime_pages({aid})")
     page = html(aid)
     pos1 = page.find('<font size=2>Информация о серии</font>')
     if pos1 == -1:
@@ -36,9 +38,12 @@ def anime_pages(aid: int) -> dict[int, str]:
     i = 1
     res = {}
     while True:
-        pos1 = page.find(f'<td Valign=top width=20> <b>#{i}&nbsp;</b></td>', pos1)
-        if pos1 == -1:
+        pos = page.find(f'<td Valign=top width=20> <b>#{i}&nbsp;</b></td>', pos1)
+        if pos == -1:
+            pos = page.find(f'<td Valign=top width=20> <b>#0{i}&nbsp;</b></td>', pos1)
+        if pos == -1:
             break
+        pos1 = pos
         if i == 1:
             pos2 = page.find('</table', pos1)
         pos1 = page.find(f'<a href = "{WAAA}?id=', pos1, pos2) + 62
@@ -63,14 +68,18 @@ def report(search: str, am: bool = False) -> None:
         )
 
 
-def search_anime(search: str, year: int, form: str) -> dict[int, str] | None:
+def search_anime(search: str, year: int, form: str, pages: dict[int, str] = {},
+                 aids: set[int] | list[int] | tuple[int] = []) -> dict[int, str] | None:
     """
     Поиск anime в WA.
     :param search: Наименование anime.
     :param year: Год премьеры.
     :param form: Формат.
+    :param pages: Словарь уже найденных страниц anime.
+    :param aids: Множество, список или кортеж ID уже найденных страниц anime.
     :return: Словарь страниц anime в WA либо None.
     """
+    print(f"- wa.search_anime('{search}', {year}, '{form}')")
     search_ = points_codes(search)
     data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
                         params={'public_search': search_, 'global_sector': AN}).text
@@ -112,6 +121,8 @@ def search_anime(search: str, year: int, form: str) -> dict[int, str] | None:
                 if posa == lss - 1:
                     break
                 aid = int(data[posa:data.find('" ', posa)])
+                if aid in pages or aid in aids:
+                    return
                 postd = data.find('</td>', posa)
                 posa = data.find("class='review'>", posa, postd) + 15
                 names = data[posa:postd].replace('</a>', '').replace('<br>', '\n')
@@ -133,6 +144,8 @@ def search_anime(search: str, year: int, form: str) -> dict[int, str] | None:
             aid = animes[num - 1][0]
     if not aid:
         aid = int(data[posa:data.find('" ', posa)])
+    if aid in pages or aid in aids:
+        return
     return anime_pages(aid)
 
 
@@ -142,6 +155,7 @@ def manga_pages(mid: int) -> dict[int, str]:
     :param mid: Страница манги в WA (HTML-код, возвращённый search_manga_in_anime_page).
     :return: Словарь страниц манги в WA.
     """
+    print(f"- - wa.manga_pages({mid})")
     page = html(mid, True)
     pos1 = page.find('<font size=2 color=#000000>Эта серия состоит из</font>')
     if pos1 == -1:
@@ -149,9 +163,12 @@ def manga_pages(mid: int) -> dict[int, str]:
     i = 1
     res = {}
     while True:
-        pos1 = page.find(f'<td Valign=top> <b>#{i}&nbsp;</b></td>', pos1)
-        if pos1 == -1:
+        pos = page.find(f'<td Valign=top> <b>#{i}&nbsp;</b></td>', pos1)
+        if pos == -1:
+            pos = page.find(f'<td Valign=top> <b>#0{i}&nbsp;</b></td>', pos1)
+        if pos == -1:
             break
+        pos1 = pos
         if i == 1:
             pos2 = page.find('</table', pos1)
         pos1 = page.find(f'<a href = "{M}.php?id=', pos1, pos2) + 24
@@ -163,13 +180,17 @@ def manga_pages(mid: int) -> dict[int, str]:
     return {mid: page}
 
 
-def search_manga(search: str, year: int) -> dict[int, str] | None:
+def search_manga(search: str, year: int, pages: dict[int, str] = {}, mids: set[int] | list[int] | tuple[int] = []
+                 ) -> dict[int, str] | None:
     """
     Поиск манги в WA.
     :param search: Наименование манги.
     :param year: Год премьеры.
+    :param pages: Словарь уже найденных страниц манги.
+    :param mids: Множество, список или кортеж ID уже найденных страниц манги.
     :return: Словарь страниц манги в WA.
     """
+    print(f"- wa.search_manga('{search}', {year})")
     search_ = points_codes(search)
     data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
                         params={'public_search': search_, 'global_sector': M}).text
@@ -202,6 +223,8 @@ def search_manga(search: str, year: int) -> dict[int, str] | None:
                 pos = pos1
     if not mid:
         mid = int(data[posa:data.find('" ', posa)])
+    if mid in pages or mid in mids:
+        return
     return manga_pages(mid)
 
 
@@ -224,22 +247,26 @@ def manga_pages_from_anime(wa_manga_pages: dict[int, str] | None, wa_anime_pages
         if not wa_manga_pages:
             wa_manga_pages = {}
         wa_manga_pages[mid] = manga
-        pos = manga.find('<font size=2 color=#000000>Эта серия состоит из</font>')
-        if pos == -1:
+        pos1 = manga.find('<font size=2 color=#000000>Эта серия состоит из</font>')
+        if pos1 == -1:
             return
         i = 1
         while True:
-            pos = manga.find(f'<td Valign=top> <b>#{i}&nbsp;</b></td>', pos)
+            pos = manga.find(f'<td Valign=top> <b>#{i}&nbsp;</b></td>', pos1)
+            if pos == -1:
+                pos = manga.find(f'<td Valign=top> <b>#0{i}&nbsp;</b></td>', pos1)
             if pos == -1:
                 break
+            pos1 = pos
             if i == 1:
-                pos2 = manga.find('</table', pos)
-            pos = manga.find(f'<a href = "{M}.php?id=', pos, pos2) + 24
-            nid = int(manga[pos:manga.find('" ', pos, pos2)])
+                pos2 = manga.find('</table', pos1)
+            pos1 = manga.find(f'<a href = "{M}.php?id=', pos1, pos2) + 24
+            nid = int(manga[pos1:manga.find('" ', pos1, pos2)])
             if nid not in wa_manga_pages:
                 related_manga(nid)
             i += 1
 
+    print("- wa.manga_pages_from_anime(wa_manga_pages, wa_anime_pages)")
     rm = {}
     for aid, anime in wa_anime_pages.items():
         pos = anime.find('<b>Снято по манге</b>')
@@ -262,18 +289,21 @@ def related_anime(wa_anime_pages: dict[int, str], aid: int) -> dict[int, str]:
     """
     anime = html(aid)
     wa_anime_pages[aid] = anime
-    pos = anime.find('<font size=2>Информация о серии</font>')
-    if pos == -1:
+    pos1 = anime.find('<font size=2>Информация о серии</font>')
+    if pos1 == -1:
         return wa_anime_pages
     i = 1
     while True:
-        pos = anime.find(f'<td Valign=top width=20> <b>#{i}&nbsp;</b></td>', pos)
+        pos = anime.find(f'<td Valign=top width=20> <b>#{i}&nbsp;</b></td>', pos1)
+        if pos == -1:
+            pos = anime.find(f'<td Valign=top width=20> <b>#0{i}&nbsp;</b></td>', pos1)
         if pos == -1:
             break
+        pos1 = pos
         if i == 1:
-            pos2 = anime.find('</table', pos)
-        pos = anime.find(f'<a href = "{WAAA}?id=', pos, pos2) + 62
-        nid = int(anime[pos:anime.find('" ', pos, pos2)])
+            pos2 = anime.find('</table', pos1)
+        pos1 = anime.find(f'<a href = "{WAAA}?id=', pos1, pos2) + 62
+        nid = int(anime[pos1:anime.find('" ', pos1, pos2)])
         if nid not in wa_anime_pages:
             wa_anime_pages = related_anime(wa_anime_pages, nid)
         i += 1
@@ -303,6 +333,7 @@ def anime_pages_from_manga(wa_anime_pages: dict[int, str], wa_manga_pages: dict[
     :param wa_manga_pages: Словарь страниц манги в WA.
     :return: Обновлённый словарь страниц anime в WA.
     """
+    print("- wa.anime_pages_from_manga(wa_anime_pages, wa_manga_pages)")
     for manga in wa_manga_pages.values():
         aids = anime_id_from_manga(manga)
         if len(aids):
@@ -318,6 +349,7 @@ def ann_anime_id(wa_page: str) -> int | None:
     :param wa_page: Страница anime (HTML-код) в WA.
     :return: ID anime в ANN, если найдена ссылка в WA. Иначе — None.
     """
+    print(f"\n- - wa.ann_anime_id(wa_page):", end=" ")
     pos1 = wa_page.find('<b>Сайты</b>')
     pos1 = wa_page.find('&nbsp;- <noindex>', pos1)
     pos2 = wa_page.find('<table ', pos1)
@@ -333,6 +365,7 @@ def ann_manga_id(wa_page: str) -> int | None:
     :param wa_page: Страница манги (HTML-код) в WA.
     :return: ID манги в ANN, если найдена ссылка в WA. Иначе — None.
     """
+    print(f"\n- - wa.ann_manga_id(wa_page):", end=" ")
     pos1 = wa_page.find('<b>Сайты</b>')
     pos2 = wa_page.find('</table>', pos1)
     pos1 = wa_page.find(f'{ANNE}{M}.php', pos1, pos2) + 58
@@ -347,8 +380,6 @@ def wp_title(wa_page: str) -> str | None:
     :param wa_page: Страница (HTML-код) в WA.
     :return: Заголовок в WP, если найдена ссылка в WA. Иначе — None.
     """
-    from urllib.parse import unquote
-
     pos1 = wa_page.find('<b>Википедия</b>')
     pos1 = wa_page.find('&nbsp;- <noindex>', pos1)
     pos2 = wa_page.find('<table ', pos1)
@@ -364,6 +395,7 @@ def mu_manga_id(wa_page: str) -> int | None:
     :param wa_page: Страница манги (HTML-код) в WA.
     :return: ID манги в MU, если найдена ссылка в WA. Иначе — None.
     """
+    print("- wa.mu_manga_id(wa_page)")
     pos = wa_page.find(WMU) + 43
     if pos == 42:
         return
@@ -389,7 +421,7 @@ def title_rom(page: str, am: bool = False) -> str:
     else:
         pos1 = page.find('Valign=top>', pos1) + 11
         pos2 = page.find('</td>', pos1)
-    return decode_name(page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
+    return page[pos1:pos2].replace(' - ', ' — ').replace('...', '…')
 
 
 def manga_date_of_premiere(page: str, full_format: bool = True) -> str:
@@ -413,7 +445,7 @@ def title_rus(page: str) -> str:
     """
     pos1 = page.find('<font size=5>') + 13
     pos2 = page.find('</font>', pos1)
-    return decode_name(page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
+    return page[pos1:pos2].replace(' - ', ' — ').replace('...', '…')
 
 
 def title_orig(page: str, am: bool = False) -> str:
@@ -431,7 +463,7 @@ def title_orig(page: str, am: bool = False) -> str:
     if pos1 != -1:
         pos1 = page.find('Valign=top>', pos1) + 11
         pos2 = page.find('</td>', pos1)
-        return decode_name(page[pos1:pos2])
+        return page[pos1:pos2]
     return title_rus(page)
 
 
@@ -458,7 +490,7 @@ def title_eng(page: str, am: bool = False) -> str:
         return ''
     pos1 = page.find('Valign=top>', pos1) + 11
     pos2 = page.find('</td>', pos1)
-    return decode_name(page[pos1:pos2]).replace(' - ', ' — ').replace('...', '…')
+    return page[pos1:pos2].replace(' - ', ' — ').replace('...', '…')
 
 
 def people(pid: int) -> dict[str, str]:
@@ -479,7 +511,7 @@ def people(pid: int) -> dict[str, str]:
     if pos1 != -1:
         pos1 = page.find("class='review'>", pos1) + 15
         pos2 = page.find('</td>', pos1)
-        data['name_orig'] = decode_name(page[pos1:pos2])
+        data['name_orig'] = page[pos1:pos2]
     else:
         data['name_orig'] = data['name_rom']
     return data
@@ -581,9 +613,11 @@ def extraction_manga(page: str) -> dict[str, str | dict[int, dict[str, str]] | d
         'date_of_premiere': str,
         'publication': dict[int, dict[str, str]],
         'genre': list[str],
-        'poster': str
+        'poster': str,
+        'ann': int
     }
     """
+    print("- wa.extraction_manga(page):", end=" ")
     result = {
         'name_orig': title_orig(page, True),
         'name_rom': manga_title_r(title_rom, page, True),
@@ -603,6 +637,7 @@ def extraction_manga(page: str) -> dict[str, str | dict[int, dict[str, str]] | d
     elif result['name_rus'] == '' and result['name_eng'] and result['name_rom']:
         result['name_rus'] = result['name_rom']
         result['name_rom'] = result['name_eng']
+    print(result['name_rom'])
     return result
 
 
@@ -773,6 +808,7 @@ def extraction_anime(page: str, mid: int | None = None
         'ann': int
     }
     """
+    print("- wa.extraction_anime(page):", end=" ")
     result = {
         'name_orig': title_orig(page),
         'name_rom': title_rom(page),
@@ -797,6 +833,7 @@ def extraction_anime(page: str, mid: int | None = None
         result['name_eng'] = result['name_rom']
     if mid:
         result[M + '_id'] = mid
+    print(result['name_rom'])
     return result
 
 

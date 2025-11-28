@@ -17,6 +17,7 @@ def manga_json(mu_id: int) -> json.JSONEncoder | None:
     :param mu_id: ID манги в MU.
     :return: Данные по манге в MU в JSON-формате, либо None.
     """
+    print(f"- - - mu.manga_json({mu_id})")
     b = 0
     while True:
         sleep(1)
@@ -37,6 +38,7 @@ def search_pages_id(mangas: dict[int, json.JSONEncoder] | None, mu_id: int) -> d
     :param mu_id: ID манги в MU.
     :return: Словарь {ID: JSON} полных JSON-словарей данных по манге в MU, либо None.
     """
+    print(f"- - mu.search_pages_id(mangas, {mu_id})")
     manga = manga_json(mu_id)
     if manga:
         if not mangas:
@@ -57,9 +59,14 @@ def search_pages(search: str, year: int | None = None) -> dict[int, json.JSONEnc
     :param year: Год премьеры манги, если известен.
     :return: Словарь {ID: JSON} полных JSON-словарей данных по манге в MU.
     """
+    print(f"- mu.search_pages('{search}', {year})")
     search = normal_name(search)
     sleep(1)
-    data = requests.post(AMUS + 'search', {'search': search}).json()
+    try:
+        data = requests.post(AMUS + 'search', {'search': search}).json()
+    except requests.exceptions.ConnectionError:
+        print(f"MU: Ошибка подключения к {AMU[:-3]}")
+        return
     for res in data['results']:
         if search == normal_name(res['hit_title']):
             if year and int(res['record']['year']) != year:
@@ -67,15 +74,6 @@ def search_pages(search: str, year: int | None = None) -> dict[int, json.JSONEnc
             mangas = {}
             mangas = search_pages_id(mangas, res['record']['series_id'])
             return mangas
-
-
-def title_rom(mu_json: json.JSONEncoder) -> str:
-    """
-    Извлечение ромадзи наименования манги из полного JSON-словаря данных по манге в MU.
-    :param mu_json: Данные по манге в MU в JSON-формате.
-    :return: Ромадзи наименование манги в MU.
-    """
-    return mu_json['title']
 
 
 def date(mu_json: json.JSONEncoder) -> str:
@@ -112,11 +110,13 @@ def select_title(mu_json: json.JSONEncoder, lang: str) -> str:
     """
     Выбор наименования манги через обращение к пользователю.
     :param mu_json: Данные по манге в MU в JSON-формате.
-    :param lang: Язык наименования: "orig", "eng", "rus".
+    :param lang: Язык наименования: "orig", "rom", "eng", "rus".
     :return: Наименование манги в MU.
     """
     if lang == 'orig':
         lang = 'оригинальное'
+    elif lang == 'rom':
+        lang = 'ромадзи'
     elif lang == 'eng':
         lang = 'английское'
     elif lang == 'rus':
@@ -246,6 +246,7 @@ def extraction_manga(mu_json: json.JSONEncoder
     :param mu_json: Данные по манге в MU в JSON-формате.
     :return: Словарь данных по манги в MU.
     """
+    print("- mu.extraction_manga")
     nv = volumes(mu_json)
     if nv < 0:
         nc = -nv
@@ -254,7 +255,7 @@ def extraction_manga(mu_json: json.JSONEncoder
         nc = nv
     res = {
         'name_orig': select_title(mu_json, 'orig'),
-        'name_rom': title_rom(mu_json),
+        'name_rom': select_title(mu_json, 'rom'),
         'name_eng': select_title(mu_json, 'eng'),
         'name_rus': select_title(mu_json, 'rus'),
         'author_of_manga': authors_of_manga(mu_json),

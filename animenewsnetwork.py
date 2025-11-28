@@ -16,6 +16,7 @@ def xml(id_: int) -> str:
     :param id_: ID манги или anime.
     :return: XML-страница манги или anime в ANN.
     """
+    print(f"- - ann.xml({id_})")
     sleep(1)
     return requests.get(f'{CANNE}api.xml', {'title': id_}).text
 
@@ -47,6 +48,28 @@ def manga_date_of_premiere(ann_xml: str) -> str | None:
     return date
 
 
+def anime_date_of_premiere(ann_xml: str) -> str | None:
+    """
+    Извлечение даты премьеры anime из XML-страницы в ANN.
+    :param ann_xml: XML-страница в ANN.
+    :return: Дата премьеры anime в ANN или None.
+    """
+    pos = ann_xml.find(' type="Premiere date"') + 21
+    if pos == 20:
+        pos = ann_xml.find(' type="Vintage"') + 15
+    pos = ann_xml.find('>', pos) + 1
+    date = ann_xml[pos:pos + 10]
+    if '</' in date:
+        date = date[:date.find('</')]
+        date_ = date.strip().split()
+        if len(date_) > 1 or len(date) == 4:
+            date = date_[0] + '-12-31'
+    dp = date_parser.parse(date).strftime('%Y-%m-%d')
+    if dp != date:
+        return
+    return date
+
+
 def pages(animes: dict[int, str], mangas: dict[int, str]) -> tuple[dict[int, str], dict[int, str], dict[int, int]]:
     """
     Поиск и получение XML-страниц манги и anime в ANN на базе уже полученных XML-страниц.
@@ -71,16 +94,17 @@ def pages(animes: dict[int, str], mangas: dict[int, str]) -> tuple[dict[int, str
             pos = anime.find('id=', pos1, pose) + 4
             id_ = int(anime[pos:anime.find('"', pos, pose)])
             pos = anime.find('rel=', pos1, pose) + 5
-            if 'adapt' in anime[pos:anime.find('"', pos, pose)]:
+            if 'adapt' in anime[pos:anime.find('"', pos, pose)] and id_ not in mangas and id_ not in mangas_:
                 manga = xml(id_)
-                posa = manga.find('<manga ')
                 rm[aid] = id_
-                if posa != -1 and id_ not in mangas and id_ not in mangas_:
+                if manga.find('<manga ') != -1:
                     mangas_[id_] = manga
                     mpages(manga)
             elif id_ not in animes and id_ not in animes_:
-                animes_[id_] = xml(id_)
-                apages(animes_[id_], id_)
+                xml_ = xml(id_)
+                if xml_[:23] != "<ann><warning>no result":
+                    animes_[id_] = xml_
+                    apages(xml_, id_)
 
     def mpages(manga: str) -> None:
         """
@@ -102,11 +126,12 @@ def pages(animes: dict[int, str], mangas: dict[int, str]) -> tuple[dict[int, str
             if posa != -1 or posb != -1:
                 pos = manga.find('id=', pos1, pose) + 4
                 id_ = int(manga[pos:manga.find('"', pos, pose)])
-                anime = xml(id_)
-                posa = anime.find('<anime ')
-                if posa != -1 and id_ not in animes_:
-                    animes_[id_] = anime
-                    apages(anime, id_)
+                if id_ not in animes_:
+                    anime = xml(id_)
+                    posa = anime.find('<anime ')
+                    if posa != -1:
+                        animes_[id_] = anime
+                        apages(anime, id_)
                 continue
             pos = manga.find('id=', pos1, pose) + 4
             id_ = int(manga[pos:manga.find('"', pos, pose)])
@@ -114,6 +139,7 @@ def pages(animes: dict[int, str], mangas: dict[int, str]) -> tuple[dict[int, str
                 mangas_[id_] = xml(id_)
                 mpages(mangas_[id_])
 
+    print(f"- - ann.pages(animes, mangas)")
     animes_ = {}
     mangas_ = {}
     rm = {}
@@ -164,6 +190,7 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
         y = manga_date_of_premiere(page) if am else anime_date_of_premiere(page)
         return int(y[:4]) != year if y else False
 
+    print(f"- ann.search_pages('{search}', {year}, '{form}')")
     search_ = dn.normal_name(search)
     data = requests.get(f'{SANNE}search/name', {'q': search_}).text
     animes = {}
@@ -179,7 +206,7 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
             if search_ not in t:
                 break
             t = text[text.find('<i>') + 5:text.find('</i>') - 1].split()
-            if 'live-action' in t or (form and form != FORM_ANN[t[0]]) or val_year(aid):
+            if 'live-action' in t or 'novel' in t or (form and form != FORM_ANN[t[0]]) or val_year(aid):
                 continue
             animes[aid] = xml(aid)
         elif data[pos - 5:pos] == M:
@@ -200,30 +227,34 @@ def title(ann_xml: str, lang: str) -> str:
     """
     Извлечение наименования из XML-страницы в ANN.
     :param ann_xml: XML-страница.
-    :param lang: Язык наименования: "orig", "eng", "rom", "rus".
+    :param lang: Язык наименования: "orig", "rom", "eng", "rus".
     :return: Наименование или пустая строка, если не найдено наименование.
     """
-    if lang == 'rom':
-        pos1 = ann_xml.find('type="Main title" lang="') + 28
-        if pos1 == 27:
-            return ''
-        pos2 = ann_xml.find('</info>', pos1)
-        return ann_xml[pos1:pos2]
-    langs = {'orig': 'JA', 'eng': 'EN', 'rus': 'RU'}
-    pos1 = 0
-    while True:
+    langs = {'orig': 'JA', 'rom': 'JA', 'eng': 'EN', 'rus': 'RU'}
+    pos1 = ann_xml.find('type="Main title" lang="') + 28
+    if pos1 > 27 and ann_xml[pos1 - 4:pos1 - 2] == (langs[lang] if lang in ("rom", "eng") else ""):
+        return ann_xml[pos1:ann_xml.find('</info>', pos1)]
+    res = ""
+    pos1 = pos2 = 10
+    while 9 < pos1 <= pos2:
         pos1 = ann_xml.find('type="Alternative title"', pos1)
-        if pos1 == -1:
+        if not res and pos1 == -1:
             pos1 = ann_xml.find(f'lang="{langs[lang]}"') + 10
             if pos1 == 9:
-                return ''
+                continue
             pos2 = ann_xml.find('</info>', pos1)
-            return ann_xml[pos1:pos2]
+            if pos2 == -1:
+                continue
+            res = ann_xml[pos1:pos2]
+            continue
         pos2 = ann_xml.find('</info>', pos1)
         pos1 = ann_xml.find(f'lang="{langs[lang]}"', pos1, pos2) + 10
         if pos1 != 9:
-            return ann_xml[pos1:pos2]
+            res = ann_xml[pos1:pos2]
+            if lang in ("rom", "eng"):
+                break
         pos1 = pos2
+    return res
 
 
 def html(page: str, params: dict) -> str:
@@ -239,27 +270,31 @@ def html(page: str, params: dict) -> str:
 
 def authors(ann_xml: str, am: bool = False) -> list[dict[str, str] | None]:
     """
-    Извлечение авторов манги из XML-страницы в ANN.
+    Извлечение авторов манги или режиссёров anime из XML-страницы в ANN.
     :param ann_xml: XML-страница.
     :param am: Переключатель: anime/манга (False/True).
     :return: Список авторов манги (автор — словарь имён: оригинальное, ромадзи или английское), если найдены.
         Если авторы не найдены, то список пустой.
     """
-    staffs = ('<task>Story &amp; Art</task>', '<task>Story</task>', '<task>Original creator</task>', '<task>Art</task>'
-              ) if am else ('<task>Director</task>',)
+    staffs = (
+        '<task>Story &amp; Art</task>',
+        '<task>Story</task>',
+        '<task>Original creator</task>',
+        '<task>Art</task>',
+        '<task>Original Character Design</task>'
+    ) if am else ('<task>Chief Director</task>', '<task>Director</task>')
     result = []
     for staff in staffs:
-        pos, posa, posb = 0, 0, 0
+        pos = posa = posb = 0
         while True:
             posa = ann_xml.find('<staff ', posa)
             if posa == -1:
                 break
             posb = ann_xml.find('</staff>', posa)
             pos = ann_xml.find(staff, posa, posb)
-            if pos == -1:
-                posa = posb
-                continue
-            break
+            if pos != -1:
+                break
+            posa = posb
         if posa == -1:
             continue
         pos = ann_xml.find('<person id="', pos, posb) + 12
@@ -271,6 +306,11 @@ def authors(ann_xml: str, am: bool = False) -> list[dict[str, str] | None]:
         name_rom_ = ann_page[pos:pos2].strip().split()
         name_rom = dn.normal_name(name_rom_[1].lower()).title() + ' ' + dn.normal_name(name_rom_[0].lower()).title()
         name_orig = ann_page[pos2 + 6:pose].strip()
+        if not name_orig:
+            for i in ("3", "2"):
+                pos = ann_page.find(f'<div id="infotype-1{i}"')
+                pos = ann_page.find("<span>", pos) + 6
+                name_orig += ann_page[pos:ann_page.find("<", pos)] + (" " if i == "3" else "")
         result.append({'name_orig': name_orig, 'name_rom': name_rom})
     return result
 
@@ -308,7 +348,6 @@ def publication(mid: int, ann_xml: str) -> dict[int, dict[str, str]] | None:
         return m_html[pos:pos2]
 
     m_html = html(M, {'id': mid})
-    result = {}
     pos = m_html.find('<div id="infotype-related">') + 27
     pose = m_html.find('</div>', pos)
     pos = m_html.find('serialized in', pos, pose)
@@ -316,10 +355,18 @@ def publication(mid: int, ann_xml: str) -> dict[int, dict[str, str]] | None:
     if pos != -1:
         pos = m_html.find(f'{M}.php?id=', pos, pose) + 13
         id_ = int(m_html[pos:m_html.find('"', pos, pose)])
+        m_html = html(M, {'id': id_})
+        pos = m_html.find('id="infotype-2"')
+        pos = m_html.find("Alternative title:", pos)
+        pos = m_html.find('">', pos) + 2
+        return {id_: {'publication': (frequency(dn.o_ou(m_html[pos:m_html.find("<", pos)].removesuffix(" (Japanese)"))).
+                                      replace("Gekkan Shounen Sunday", "Gekkan Shounen Magazine")),
+                      'publishing': publishing(), 'type': 1}}
     pos1 = ann_xml.find('type="Vintage"') + 15
     pose = min([ann_xml.find(s, pos1) for s in ('<ratings ', '<review ', '<news ', '<staff ')
                 if ann_xml.find(s, pos1) > 0])
     pos = ann_xml.find('serialized in ', pos1, pose) + 14
+    result = {}
     if pos == 13:
         publishing_ = publishing()
         if publishing_:
@@ -402,6 +449,7 @@ def extraction_manga(
     :param ann_xml: XML-страница в ANN.
     :return: Словарь данных манги в ANN.
     """
+    print(f"- ann.extraction_manga({mid}, ann_xml):", end=" ")
     result = {
         'name_orig': title(ann_xml, 'orig'),
         'name_rom': title(ann_xml, 'rom'),
@@ -416,6 +464,7 @@ def extraction_manga(
     }
     if not result['name_orig']:
         result['name_orig'] = result['name_rom']
+    print(result['name_rom'])
     return result
 
 
@@ -467,28 +516,6 @@ def duration(ann_xml: str) -> str | None:
         return dn.hours_minutes(int(res))
 
 
-def anime_date_of_premiere(ann_xml: str) -> str | None:
-    """
-    Извлечение даты премьеры anime из XML-страницы в ANN.
-    :param ann_xml: XML-страница в ANN.
-    :return: Дата премьеры anime в ANN или None.
-    """
-    pos = ann_xml.find(' type="Premiere date"') + 21
-    if pos == 20:
-        pos = ann_xml.find(' type="Vintage"') + 15
-    pos = ann_xml.find('>', pos) + 1
-    date = ann_xml[pos:pos + 10]
-    if '</' in date:
-        date = date[:date.find('</')]
-        date_ = date.strip().split()
-        if len(date_) > 1 or len(date) == 4:
-            date = date_[0] + '-12-31'
-    dp = date_parser.parse(date).strftime('%Y-%m-%d')
-    if dp != date:
-        return
-    return date
-
-
 def extraction_anime(ann_xml: str, mid: int | None = None) -> dict[str, str | int | list[dict[str, str] | str] | None]:
     """
     Извлечение данных anime из XML-страницы в ANN.
@@ -496,6 +523,7 @@ def extraction_anime(ann_xml: str, mid: int | None = None) -> dict[str, str | in
     :param mid: ID манги в ANN.
     :return: Словарь данных anime в ANN.
     """
+    print(f"- ann.extraction_anime(ann_xml, {mid}):", end=" ")
     result = {
         'name_orig': title(ann_xml, 'orig'),
         'name_rom': title(ann_xml, 'rom'),
@@ -511,6 +539,9 @@ def extraction_anime(ann_xml: str, mid: int | None = None) -> dict[str, str | in
     }
     if not result['name_orig']:
         result['name_orig'] = result['name_rom']
+    elif result['name_orig'] == result['name_rom'] and result['name_rom'] != result['name_eng']:
+        result['name_rom'] = result['name_eng']
     if mid:
         result[M + '_id'] = mid
+    print(result['name_rom'])
     return result

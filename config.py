@@ -8,11 +8,15 @@ DB_CONNECT = ("localhost", "", "", "anime_manga")
 # Путь хранения микропостеров. Например: 'C:/LOCALHOST/anime_manga/microposter/'.
 PATH = ''
 
+# Версия браузера Mozilla Firefox для User-Agent (рекомендуется к актуализации).
+FIREFOX_VER = '145.0.2'
+
 # WA-форматы anime в ANN.
 FORM_ANN = {
     'movie': 'полнометражный фильм',
     'OAV': 'OVA',
     'ONA': 'ONA',
+    'special': 'ТВ-спэшл',
     'TV': 'ТВ'
 }
 
@@ -24,8 +28,9 @@ FORM_WP = {
 }
 
 # Игнорируемые жанры.
-IGNORED_GENRES = {'дзёсэй', 'сёдзё', 'сёнэн', 'сэйнэн', 'Action', 'Adult', 'Doujinshi', 'Gender Bender', 'Historical',
-                  'Josei', 'Mature', 'Seinen', 'Shoujo', 'Shoujo Ai', 'Shounen', 'Shounen Ai', 'Yaoi', 'Yuri'}
+IGNORED_GENRES = {'дзёсэй', 'история', 'сёдзё', 'сёнэн', 'сэйнэн', 'Action', 'Adult', 'Doujinshi', 'Gender Bender',
+                  'Harem', 'Historical', 'Josei', 'Mature', 'Seinen', 'Shoujo', 'Shoujo Ai', 'Shounen', 'Shounen Ai',
+                  'Yaoi', 'Yuri'}
 
 # Жанры AnimeNewsNetwork.
 GENRES_ANN = {
@@ -35,6 +40,7 @@ GENRES_ANN = {
     'erotica': 'эротика',
     'fantasy': 'фэнтези',
     'horror': 'ужасы',
+    'magic': 'магия',
     'psychological': 'психология',
     'romance': 'романтика',
     'science fiction': 'фантастика',

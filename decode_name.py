@@ -8,11 +8,12 @@ import datetime
 
 def decode_name(name: str) -> str:
     """
-    Декодирование символов Юникод в наименовании.
+    Декодирование символов Юникод и шестьнадцатиричных кодов в наименовании.
     :param name: Наименование с закодированными символами.
     :return: Декодированное наименование.
     """
-    return re.sub(r'&#(\d+);', lambda m: chr(int(m[1])), name)
+    return re.sub(r'&#x(\w+);', lambda m: chr(int(m[1], 16)),
+                  re.sub(r'&#(\d+);', lambda m: chr(int(m[1])), name.replace('&#160;', ' ')))
 
 
 def o_ou(name: str) -> str:
@@ -31,7 +32,8 @@ def normal_name(name: str) -> str:
     :param name: Наименование.
     :return: Нормализованное наименование.
     """
-    name = o_ou(name).lower().replace('×', 'x').replace('_', ' ').replace('ö', 'o').strip()
+    name = (o_ou(decode_name(name)).lower().replace('×', 'x').replace('_', ' ').
+            replace('ö', 'o').replace('-', ' ').strip())
     chars = 'abcdefghijklmnopqrstuvwxyz 0123456789'
     name2 = ''
     for i in range(len(name)):

@@ -10,165 +10,234 @@ import decode_name as dn
 from constants import *
 from config import FORM_WP, frequency
 
+CIS = 'class="infobox-subheader"'
 
-def page(url: str) -> str:
+wikipedia.API_URL = 'https://en.wikipedia.org/w/api.php'
+wikipedia.set_user_agent(USER_AGENT)
+
+
+def page(url: str) -> str | None:
     """
-    Получение HTML-кода страницы по внутренней ссылке в WP. Используется requests.
+    Получение HTML-кода страницы по внутренней ссылке в WP. Используется пакет requests.
     :param url: Внутренняя ссылка (после /wiki/).
-    :return: HTML-код страницы или строка статус-кода, если он не равен 200.
+    :return: HTML-код страницы или None, если статус-код не равен 200.
     """
     sleep(1)
-    result = requests.get(WPE + url)
+    result = requests.get(
+        WPES + url,
+        headers={'User-Agent': USER_AGENT}
+    )
     if result.status_code == 200:
-        return result.text
-    return str(result.status_code)
+        return dn.decode_name(result.text)
 
 
-def html(search: str) -> str:
+class Page:
     """
-    Получение страницы (HTML-кода) из WP. Используется wikipedia.
-    Если в течение 15 секунд нет результата, происходит переключение на page, а пробелы в search заменяются на «_».
-    :param search: Искомое наименование.
-    :return: Страница (HTML-код).
+    Страница из Wikipedia (en).
+
+    Свойства:
+    html — HTML-код страницы (или None, если статус-код не равен 200);
+    url — внутренняя ссылка (после /wiki/).
     """
-    b = 0
-    while True:
-        sleep(1)
-        try:
-            result = wikipedia.page(search).html()
-        except wikipedia.WikipediaException:
-            b += 1
-            if b == 15:
-                return page(search.replace(' ', '_'))
-            continue
-        return result
+    def __init__(self, search: str):
+        """
+        Получение страницы (HTML-кода) из WP. Используется пакет wikipedia.
+        Если в течение ~15 секунд нет результата, происходит переключение на page, а пробелы в search заменяются на «_».
+        :param search: Искомое наименование.
+        """
+        b = 0
+        while True:
+            sleep(1)
+            try:
+                for wpt in wikipedia.search(search):
+                    if dn.normal_name(wpt) == dn.normal_name(search):
+                        wp = wikipedia.WikipediaPage(wpt, redirect=True, preload=False)
+                        self.html = dn.decode_name(wp.html())
+                        self.url = wp.url.removeprefix(WPE).removeprefix(WPES)
+                        break
+                else:
+                    self._try_page(search)
+                break
+            except wikipedia.WikipediaException:
+                b += 1
+                if b == 15:
+                    self._try_page(search)
+                    break
+
+    def _try_page(self, search: str):
+        url = search.replace(' ', '_')
+        self.html = page(url)
+        self.url = url
 
 
-def search_pages(search: str) -> dict[str, str]:
+def _pos_table(_page: str) -> int:
+    """
+    Поиск инфо-бокса.
+    :param _page: HTML-код.
+    :return: Позиция инфо-бокса. (Позиция после «<table ».)
+    """
+    post = _page.find('<table') + 7
+    for box in ('class="box-Lead_too_short', 'class="box-Multiple_issues',
+                'class="box-More_citations_needed', 'class="box-In-universe'):
+        if _page.find(box, post) != -1:
+            post = _page.find('<table', post) + 7
+    return post
+
+
+def _pos_ab(_page: str, a: int, b: int) -> tuple[int, int]:
+    """
+    Поиск текста между HTML-тегами.
+    :param _page: HTML-код.
+    :param a: Позиция начала поиска.
+    :param b: Позиция конца поиска.
+    :return: Позиции начала и конца текста.
+    """
+    posa = _page.find('>', a, b) + 1
+    posb = _page.find('<', posa, b)
+    while posa != b and (posa == posb or posa == posb + 1 or len(_page[posa:posb].strip()) < 4):
+        posa = _page.find('>', posa, b) + 1
+        posb = _page.find('<', posa, b)
+    if "<style " in _page[_page.find("<", posa - 57, posa - 1):posa]:
+        return _pos_ab(_page, posb, b)
+    if posb < 0:
+        posb = b
+    return posa, posb
+
+
+def search_pages(search: str, res: dict[str, str] = {}) -> dict[str, str]:
     """
     Поиск страниц по наименованию в WP.
     :param search: Искомое наименование.
-    :return: Словарь {title_norm: HTML} страниц в WP.
+    :param res: Дополняемый словарь {title: HTML} страниц в WP.
+    :return: Итоговый словарь {title: HTML} страниц в WP.
     """
+    def res_update(post: int, posl: int) -> None:
+        nonlocal res
+        if _page.html.find('<i>', post, posl) != -1:
+            while True:
+                post = _page.html.find('title="', post, posl) + 7
+                if post == 6:
+                    break
+                ttl = _page.html[post:_page.html.find('"', post, posl)]
+                if ttl not in res:
+                    res = search_pages(ttl, res)
+
+    def res_update_ul() -> None:
+        posu = _page.html.find('<ul>', pos, pos2) + 4
+        if posu != 3:
+            res_update(posu, _page.html.find('</ul>', posu, pos2))
+
+    print(f"- wp.search_pages('{search}')")
     search_ = dn.normal_name(search)
-    _page = html(search_)
-    if (('<div class="shortdescription nomobile noexcerpt noprint searchaux" style="display:none">'
-         'Name list</div>') in _page or _page == '404' or (M not in search_ and search_ not in dn.normal_name(_page)) or
-            (M in search_ and search_[:-6] not in dn.normal_name(_page))):
-        return {}
-    res = {search_: _page}
-    posb = _page.find('<table') + 7
-    if _page.find('class="box-Lead_too_short', posb) != -1:
-        posb = _page.find('<table', posb) + 7
-    pose = _page.find('</table>', posb)
-    pos = _page.find('class="infobox-full-data"', posb, pose)
+    _page = Page(search)
+    if _page.html:
+        norm_page = dn.normal_name(_page.html)
+    if (not _page.html or
+            '<div class="shortdescription nomobile noexcerpt noprint searchaux" style="display:none">'
+            'Name list</div>' in _page.html or
+            (M not in search_ and search_ not in norm_page) or
+            (M in search_ and search_[:-6] not in norm_page)):
+        return res
+    res[_page.url.replace('_', ' ')] = _page.html
+    posb = _pos_table(_page.html)
+    pose = _page.html.find('</table>', posb)
+    pos = _page.html.find('<link ', posb, pose)
     if pos != -1:
-        pos1 = _page.find('class="infobox-subheader"', posb, pose) + 25
+        pos1 = _page.html.find(CIS, posb, pose) + 25
+        pos1 = _page.html.find(CIS, pos1, pose) + 25
         while pos1 > 24 and pos > 0:
-            pos2 = _page.find('class="infobox-subheader"', pos1, pose)
+            pos2 = _page.html.find(CIS, pos1, pose)
             if pos2 == -1:
                 pos2 = pose
             if pos2 > pos:
-                pos = _page.find('>', pos1, pos) + 1
+                pos, posa = _pos_ab(_page.html, pos1, pos2)
                 if pos == 0:
                     break
-                t = _page[pos:_page.find('<', pos, pos2)]
-                if 'Anime' in t or 'Manga' in t:
-                    posu = _page.find('<ul>', pos, pos2) + 4
-                    if posu != 3:
-                        posl = _page.find('</ul>', posu, pos2)
-                        posi = _page.find('<i>', posu, posl) + 3
-                        if posi != 2:
-                            post = posu
-                            while True:
-                                post = _page.find('title="', post, posl) + 7
-                                if post == 6:
-                                    break
-                                ttl = _page[post:_page.find('"', post, posl)]
-                                res.update(search_pages(ttl))
+                t = _page.html[pos:posa]
+                if 'anim' in t.lower() or 'Manga' in t:
+                    res_update_ul()
+                elif t in ('Related series', 'Feature films', 'Related works'):
+                    poso = _page.html.find('<ol>', pos, pos2) + 4
+                    if poso != 3:
+                        res_update(poso, _page.html.find('</ol>', poso, pos2))
+                    else:
+                        res_update_ul()
             pos1 = pos2 + 25
-            pos = _page.find('class="infobox-full-data"', pos1, pose)
+            pos = _page.html.find('<link ', pos1, pose)
     return res
 
 
 def manga_anime_in_page(pages: dict[str, str]) -> dict[str, dict[str, dict[str, str]]]:
     """
-    Извлечение из страницы частей страницы (частей инфоблоков) по отдельным манге и anime в WP.
-    :param pages: Страница (HTML-код) в WP.
+    Извлечение из страницы частей страницы (частей инфо-блоков) по отдельным манге и anime в WP.
+    :param pages: Словарь страниц (HTML-код) в WP.
     :return: Словарь:
     {
-        page_title_norm: {
+        page_title: {
             'manga': {
-                manga_title_norm: page_part,
+                manga_title: page_part,
 
                 ...
             },
 
             'anime': {
-                anime_title_norm: page_part,
+                anime_title: page_part,
 
                 ...
             }
         }
     }
     """
+    print("- wp.manga_anime_in_page(pages):")
     result = {}
-    for page_title_norm, page in pages.items():
+    for page_title, _page in pages.items():
+        print("- - ", page_title)
         res = {}
-        posb = page.find('<table') + 7
-        if (page.find('class="box-Lead_too_short', posb) != -1 or
-                page.find('>This article <b>needs additional citations for', posb) != -1):
-            posb = page.find('<table', posb) + 7
-        pose = page.find('</table>', posb)
-        pos1 = page.find('class="infobox-subheader"', posb, pose)
+        posb = _pos_table(_page)
+        pose = _page.find('</table>', posb)
+        pos1 = _page.find(CIS, posb, pose)
         if pos1 != -1:
             l1 = 25
             v2 = False
+            pos1 = _page.find(CIS, pos1 + l1, pose)
         else:
-            pos1 = page.find('class="infobox-above summary"', posb, pose)
             l1 = 29
             v2 = True
-        while pos1 > l1 - 1:
-            pos2 = page.find('class="infobox-subheader"', pos1 + l1, pose)
+            pos1 = _page.find('class="infobox-above summary"', posb, pose)
+        while (pos1 > l1 - 1) and pos1 < pose:
+            pos2 = _page.find(CIS, pos1 + l1, pose)
             if pos2 == -1:
-                pos2 = page.find('<link ', pos1 + l1, pose)
+                pos2 = _page.find('TemplateStyles:r1316064257', pos1 + l1, pose)
             if pos2 == -1:
                 pos2 = pose
-            if 'class="infobox-full-data"' not in page[pos1:pos2]:
-                pos = page.find('>', pos1, pos2) + 1
-                if pos == 0:
+            if 'class="infobox-full-data"' not in _page[pos1:pos2]:
+                pos, posa = _pos_ab(_page, pos1, pos2)
+                if pos == 0 or posa < 0:
                     break
-                posa = page.find('<', pos, pos2)
-                if posa == pos:
-                    pos = page.find('>', pos, pos2) + 1
-                    posa = page.find('<', pos, pos2)
-                t = page[pos:posa]
+                t = _page[pos:posa]
                 if 'Manga' in t or 'anim' in t.lower():
-                    posa = page.find('<tr><th colspan="2" class="infobox-header" style="background:#EEF; '
-                                     'font-weight:normal;"><i>', pos1, pos2) + 91
-                    if posa == 90:
-                        posa = page.find('<tr><th colspan="2" class="infobox-header" style="background:#EEF; '
-                                         'color:black; font-weight:normal;"><i>', pos1, pos2) + 104
-                    if posa > 103:
-                        posb = page.find('<', posa, pos2)
-                        ttl = dn.normal_name(page[posa:posb])
+                    posa = _page.find('class="infobox-header" style="background:#EEF;', pos1, pos2)
+                    if posa > 0:
+                        posa, posb = _pos_ab(_page, posa, pos2)
+                        ttl = _page[posa:posb]
                     else:
-                        ttl = page_title_norm.removesuffix(" manga")
+                        ttl = page_title.removesuffix(" (manga)")
                     am = M if 'Manga' in t else A
                     if am not in res:
                         res[am] = {}
                     if ttl in res[am]:
                         ttl += f' ({t})'
-                    res[am][ttl] = page[pos:pos2]
+                    res[am][ttl] = _page[pos:pos2]
                 elif v2:
-                    page_part = page[pos:pos2]
+                    page_part = _page[pos:pos2]
+                    t = page_part[:page_part.find("</th>")].replace("</i>", " ").replace("<br />", " ")
                     am = A if '>Directed by</th>' in page_part else M
                     if am not in res:
                         res[am] = {}
                     res[am][t] = page_part
                     break
             pos1 = pos2
-        result[page_title_norm] = res
+        result[page_title] = res
     return result
 
 
@@ -178,31 +247,23 @@ def date_of_premiere(page_part: str) -> str | None:
     :param page_part: Часть страницы (HTML-код) в WP.
     :return: Дата премьеры в WP либо None.
     """
-    posa = page_part.find('<th scope="row" class="infobox-label">Released</th><td class="infobox-data">') + 76
-    posb = page_part.find('<th scope="row" class="infobox-label">Original run</th><td class="infobox-data">') + 80
-    posc = page_part.find('<th scope="row" class="infobox-label">Published</th><td class="infobox-data">') + 77
-    posd = page_part.find('>Release date</div></th>') + 24
-    posf = page_part.find('<th scope="row" class="infobox-label">Release</th><td class="infobox-data">') + 75
     v2 = False
-    if posa == 75 and posb != 79:
-        pos1 = posb
-    elif posb == 79 and posa != 75:
-        pos1 = posa
-    elif posa == 75 and posb == 79 and posc != 76:
-        pos1 = posc
-    elif posd != 23:
-        pos1 = page_part.find('<', posd)
-        v2 = True
-        pos2 = posd
-    elif posf != 74:
-        pos1 = posf
+    for th in ('<th scope="row" class="infobox-label">Released</th><td ',
+               '<th scope="row" class="infobox-label">Original run</th><td ',
+               '<th scope="row" class="infobox-label">Published</th><td ',
+               '<th scope="row" class="infobox-label">Release</th><td ',
+               '>Release date</div></th>'):
+        pos1 = page_part.find(th)
+        if pos1 > 0:
+            pos1 += len(th)
+            if th == '>Release date</div></th>':
+                v2 = True
+                pos1 = page_part.find('<', pos1)
+            break
     else:
         return
     pose = page_part.find('</td>', pos1)
-    pos = page_part.find('<', pos1, pose)
-    while pos == pos1 or pos == pos1 + 1:
-        pos1 = page_part.find('>', pos1, pose) + 1
-        pos = page_part.find('<', pos1, pose)
+    pos1, pos = _pos_ab(page_part, pos1, pose)
     if not v2:
         posa = page_part.find('</span>', pos1, pose)
         posb = page_part.find('<span', pos1, pose)
@@ -211,7 +272,9 @@ def date_of_premiere(page_part: str) -> str | None:
             pos2 = page_part.find('<', pos1, pose)
         if pos2 < 0:
             pos2 = pose
-    date = page_part[pos1:pos2].replace('&#160;', ' ').strip()
+    else:
+        pos2 = pos
+    date = page_part[pos1:pos2].strip()
     if len(date) == 4:
         return date_parser.parse(date).strftime('%Y') + '-12-31'
     date_ = date.split(' ')
@@ -234,7 +297,7 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, str]]]) -> dict[str, 
     :return: Словарь
     {
         'manga': {
-            title_norm: {
+            title: {
                 'page_part': str,
 
                 'page_title': str
@@ -244,7 +307,7 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, str]]]) -> dict[str, 
         },
 
         'anime': {
-            title_norm: {
+            title: {
                 'page_part': str,
 
                 'page_title': str
@@ -254,12 +317,16 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, str]]]) -> dict[str, 
         }
     }
     """
+    print("- wp.filter_page_parts(pages):")
     res = {}
     for page_title, _page in pages.items():
+        print("- - ", page_title)
         for am, page_parts in _page.items():
+            print("- " * 3, am)
             if am not in res:
                 res[am] = {}
             for ttl, page_part in page_parts.items():
+                print("- " * 4, ttl)
                 fpp = True
                 for pp in res[am].values():
                     if pp == page_part:
@@ -290,7 +357,7 @@ def _count_li(_page: str, pos1: int, pos2: int) -> int:
 
 def number_of_chapters(page_part: str) -> int:
     """
-    Извлечение количества глав манги из соответствующей части инфоблока в WP.
+    Извлечение количества глав манги из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы манги в WP (HTML-код).
     :return: Количество глав манги в WP. 0 — нет данных.
     """
@@ -321,7 +388,7 @@ def number_of_chapters_2(_page: str) -> int:
 
 def title(page_part: str) -> str:
     """
-    Извлечение наименования (англ.) из соответствующей части инфоблока в WP.
+    Извлечение наименования (англ.) из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы в WP (HTML-код).
     :return: Наименование (англ.) в WP.
     """
@@ -346,53 +413,62 @@ def title(page_part: str) -> str:
 
 def authors(page_part: str, *args) -> list[dict[str, str] | None]:
     """
-    Извлечение имён авторов манги или режиссёров anime из соответствующей части инфоблока в WP.
+    Извлечение имён авторов манги или режиссёров anime из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы манги в WP (HTML-код).
     :param args: Кортеж категорий авторов ("Written", "Illustrated", "Directed").
     :return: Список словарей имён авторов манги или режиссёров anime в WP.
     """
-    def orig_rom() -> tuple[str, str]:
+    def normal_rom(_name: str) -> str:
         """
-        Извлечение оригинального и ромадзи имён из HTML-страницы автора в WP.
-        :return: Кортеж оригинального и ромадзи имён автора в WP.
+        Нормализация ромадзи имени.
+        :param _name: Ромадзи (английское) имя из страницы как есть.
+        :return: Нормализованное ромадзи имя.
         """
-        def normal_rom(_name: str) -> str:
-            _name = _name.split()
-            return dn.normal_name(_name[1].lower()).title() + " " + dn.normal_name(_name[0].lower()).title()
+        _name = _name.split()
+        return dn.o_ou(dn.decode_name((_name[1] + " " if len(_name) > 1 else "") + _name[0])).lower().title()
 
-        pos = apage.find('<tr><th colspan="2" class="infobox-above" style="font-size:125%;">'
-                         '<div style="display:inline;" class="fn">') + 106
-        name_rom = ""
-        if pos > 105:
-            name_rom = normal_rom(apage[pos:apage.find("<", pos)])
+    def orig_rom(_name: str) -> None:
+        """
+        Извлечение оригинального и ромадзи имён из HTML-страницы автора в WP и добавление в список result.
+        :param _name: Ромадзи (английское) имя из страницы как есть.
+        """
+        apage = Page(dn.normal_name(_name)).html
+        if apage:
+            _pos1 = apage.find('<tr><th colspan="2" class="infobox-above')
+            _name_rom = ""
+            if _pos1 > 0:
+                _pos1, _pos2 = _pos_ab(apage, _pos1 + 40, apage.find("</tr>", _pos1))
+                _name_rom = normal_rom(apage[_pos1:_pos2])
+            _name_orig = ""
+            if (_pos1 := apage.find(f'<tr><td colspan="2" {CIS} style="font-size:125%;">'
+                                    '<div class="nickname" lang="ja">') + 102) > 101:
+                _name_orig = apage[_pos1:apage.find("</div", _pos1)]
+            elif (_pos1 := apage.find('<span lang="ja">') + 16) > 15:
+                _pos2 = apage.find("</span>", _pos1)
+                _pos = apage.find(" (", _pos1, _pos2)
+                _name_orig = apage[_pos1:_pos] if _pos != -1 else apage[_pos1:_pos2]
+                while '<' in _name_orig:
+                    _pos1 = _name_orig.find('<')
+                    _pos2 = _name_orig.find('>', _pos1) + 1
+                    _name_orig = _name_orig[:_pos1] + _name_orig[_pos2:]
+                if not _name_rom:
+                    _pos1 = apage.find('<i lang="ja-Latn">', _pos1) + 18
+                    _name_rom = apage[_pos1:apage.find('</i>', _pos1)]
+            else:
+                _pos1 = apage.find("</b> (") + 6
+                _pos2 = apage.find(" <", _pos1)
+                _name_orig = apage[_pos1:_pos2]
+                _pos1 = _pos2 + 4
+                _pos2 = apage.find("<", _pos1)
+                _name_rom = apage[_pos1:_pos2]
+            result.append({'name_orig': _name_orig, 'name_rom': _name_rom})
         else:
-            pos = apage.find('<tr><th colspan="2" class="infobox-above" style="font-size:125%;">'
-                             '<div class="fn">') + 82
-            if pos == 81:
-                pos = apage.find('<tr><th colspan="2" class="infobox-above fn">') + 45
-            if pos > 44:
-                name_rom = normal_rom(apage[pos:apage.find("</div", pos)])
-        name_orig = ""
-        if (pos := apage.find('<tr><td colspan="2" class="infobox-subheader" style="font-size:125%;">'
-                              '<div class="nickname" lang="ja">') + 102) > 101:
-            name_orig = apage[pos:apage.find("</div", pos)]
-        elif (pos := apage.find('<span lang="ja">') + 16) > 15:
-            pos2 = apage.find("</span>", pos)
-            pos1 = apage.find(" (", pos, pos2)
-            name_orig = apage[pos:pos1] if pos1 != -1 else apage[pos:pos2]
-            while '<' in name_orig:
-                pos = name_orig.find('<')
-                pos2 = name_orig.find('>', pos) + 1
-                name_orig = name_orig[:pos] + name_orig[pos2:]
-            if not name_rom:
-                pos = apage.find('<i lang="ja-Latn">', pos) + 18
-                name_rom = apage[pos:apage.find('</i>', pos)]
-        return name_orig, name_rom
+            result.append({'name_rom': normal_rom(_name)})
 
     result = []
     for staff in args:
         pos, posa, posb = 0, 0, 0
-        st = f'<tr><th scope="row" class="infobox-label">{staff}&#160;by</th><td class="infobox-data">'
+        st = f'<tr><th scope="row" class="infobox-label">{staff} by</th><td class="infobox-data">'
         posa = page_part.find(st, posa)
         if posa == -1:
             continue
@@ -409,39 +485,46 @@ def authors(page_part: str, *args) -> list[dict[str, str] | None]:
                         pos = posa + lst
                         while '<' in page_part[pos:pos + 1]:
                             pos = page_part.find('>', pos, pos2) + 1
-                        name_ = page_part[pos:page_part.find('</a>', pos, pos2)].split()
+                        name_ = page_part[pos:page_part.find('<', pos, pos2)]
                     else:
-                        name_ = page_part[pos:page_part.find('"', pos, pos2)].split()
+                        name_ = page_part[pos:page_part.find('"', pos, pos2)]
                 else:
-                    name_ = page_part[pos1:page_part.find('</li>', pos1, pos2)].split()
-                result.append({'name_rom': name_[1] + " " + name_[0]})
+                    name_ = page_part[pos1:page_part.find('<', pos1, pos2)]
+                result.append({'name_rom': normal_rom(name_)})
                 pos1 = page_part.find('<li>', pos1, pos2) + 4
             return result
         else:
             pos = page_part.find("title=", posa + lst, posb) + 7
-            if pos == 6:
-                pos = posa + lst
-                while '<' in page_part[pos:pos + 1]:
-                    pos = page_part.find('>', pos, posb) + 1
-                name_ = page_part[pos:posb].split()
-                name_rom = name_[1] + " " + name_[0]
-                result.append({'name_rom': name_rom})
+            if pos > 6:
+                name_rom = page_part[pos:page_part.find('"', pos, posb)]
+                orig_rom(name_rom)
                 continue
-            apage = html(page_part[pos:page_part.find('"', pos, posb)])
-            name_orig, name_rom = orig_rom()
-            result.append({'name_orig': name_orig, 'name_rom': name_rom})
+            pos = posa + lst
+            while '<' in page_part[pos:pos + 1]:
+                pos = page_part.find('>', pos, posb) + 1
+            name_rom = page_part[pos:posb]
+            if "<br />" in name_rom:
+                names = name_rom.split("<br />")
+                result.extend([{'name_rom': normal_rom(name)} for name in names])
+            else:
+                result.append({'name_rom': normal_rom(name_rom)})
     if not len(result):
-        pos = page_part.find('>Directed by</th>') + 17
-        pos = page_part.find('title=', pos) + 7
-        apage = html(page_part[pos:page_part.find('"', pos)])
-        name_orig, name_rom = orig_rom()
-        result.append({'name_orig': name_orig, 'name_rom': name_rom})
+        posa = page_part.find('>Directed by</th>') + 17
+        if posa > 17:
+            pose = page_part.find('</td>', posa)
+            pos = page_part.find('title=', posa, pose) + 7
+            if pos > 7:
+                name_rom = page_part[pos:page_part.find('"', pos)]
+            else:
+                pos1, pos2 = _pos_ab(page_part, posa, pose)
+                name_rom = page_part[pos1:pos2]
+            orig_rom(name_rom)
     return result
 
 
 def number_of_volumes(page_part: str) -> int:
     """
-    Извлечение количества томов манги из соответствующей части инфоблока в WP.
+    Извлечение количества томов манги из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы манги в WP (HTML-код).
     :return: Количество томов манги в WP.
     """
@@ -462,7 +545,7 @@ def publications(page_part: str) -> list[dict[str, str | int]]:
     :return: Список наименований издательства и издания в WP.
     """
     res = {'publication': []}
-    for pp, tpp in {'publishing': "Published&#160;by", 'publication': "Magazine"}.items():
+    for pp, tpp in {'publishing': "Published by", 'publication': "Magazine"}.items():
         st = f'<tr><th scope="row" class="infobox-label">{tpp}</th>'
         lst = len(st)
         posa = page_part.find(st) + lst
@@ -497,7 +580,7 @@ def publications(page_part: str) -> list[dict[str, str | int]]:
                 tmp = page_part[pos:posb]
             if pp == "publishing":
                 res[pp] = tmp
-            else:
+            elif tmp not in res[pp]:
                 res[pp].append(tmp)
         elif pp == 'publication':
             res.update({pp: [f'? ({res['publishing']})'], 'type': 2})
@@ -512,7 +595,7 @@ def publications(page_part: str) -> list[dict[str, str | int]]:
 def extraction_manga(page_part: str, _page: str
                      ) -> dict[str, str | list[dict[str, str] | None] | int | list[str | None]]:
     """
-    Извлечение данных по манге из соответствующей части инфоблока в WP.
+    Извлечение данных по манге из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы манги в WP (HTML-код).
     :param _page: Страница манги в WP (HTML-код).
     :return: Словарь данных по манге в WP:
@@ -525,6 +608,7 @@ def extraction_manga(page_part: str, _page: str
         'publication': list[dict[str, str | int]]
     }
     """
+    print("- " * 4, "wp.extraction_manga")
     nc = number_of_chapters(page_part)
     if not nc:
         nc = number_of_chapters_2(_page)
@@ -541,47 +625,60 @@ def extraction_manga(page_part: str, _page: str
 
 def anime_format(page_part: str) -> str | None:
     """
-    Извлечение формата anime из соответствующей части инфоблока в WP.
+    Извлечение формата anime из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы anime в WP (HTML-код).
     :return: Формата anime в WP либо None.
     """
     t = page_part[:page_part.find('</')]
-    return FORM_WP[t] if t in FORM_WP else None
+    return FORM_WP[t] if t in FORM_WP else FORM_WP['Anime film series'] if 'movie' in t.lower() else None
 
 
 def number_of_episodes(page_part: str) -> int:
     """
-    Извлечение количества эпизодов anime из соответствующей части инфоблока в WP.
+    Извлечение количества эпизодов anime из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы anime в WP (HTML-код).
     :return: Количество эпизодов anime в WP.
     """
-    pos = page_part.find('<tr><th scope="row" class="infobox-label">Episodes</th><td class="infobox-data">') + 80
-    if pos > 79:
-        pos2 = page_part.find('</', pos)
-        pos1 = page_part.find(' ', pos, pos2)
-        if pos1 != -1:
-            return int(page_part[pos:pos1])
-        return int(page_part[pos:pos2])
+    sa = '<tr><th scope="row" class="infobox-label">'
+    sb = '</th><td class="infobox-data">'
+    for st in ("Episodes", '<abbr title="Number">No.</abbr> of episodes'):
+        s = f"{sa}{st}{sb}"
+        pos = page_part.find(s)
+        if pos > 0:
+            pos += len(s)
+            break
+    else:
+        return 1
+    pos2 = page_part.find('</', pos)
+    pos1 = page_part.find(' ', pos, pos2)
+    if pos1 != -1:
+        return int(page_part[pos:pos1])
+    return int(page_part[pos:pos2])
 
 
 def duration(page_part: str) -> str | None:
     """
-    Извлечение продолжительности эпизода anime из соответствующей части инфоблока в WP.
+    Извлечение продолжительности эпизода anime из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы anime в WP (HTML-код).
     :return: Продолжительность эпизода anime в WP либо None.
     """
-    pos = page_part.find('<tr><th scope="row" class="infobox-label">Runtime</th><td class="infobox-data">') + 79
-    if pos > 78:
-        pos2 = page_part.find(' ', pos, page_part.find('</td>', pos))
-        if pos2 != -1:
-            pos1 = page_part.find('–', pos, pos2) + 1
-            dur = page_part[pos1:pos2] if pos1 != 0 else page_part[pos:pos2]
+    for th in ('>Runtime<', '>Running time<'):
+        pos1 = page_part.find(th)
+        if pos1 > 0:
+            pos1 += len(th)
+            pos1, pos2 = _pos_ab(page_part, pos1, page_part.find('</td>', pos1))
+            pos = page_part.find(' ', pos1, pos2)
+            if pos != -1:
+                pos3 = page_part.find('–', pos1, pos) + 1
+                dur = page_part[pos3:pos] if pos3 != 0 else page_part[pos1:pos]
+            else:
+                dur = page_part[pos1:pos2]
             return dn.hours_minutes(int(dur)) if dur.isdigit() else None
 
 
 def studios(page_part: str) -> list[str] | None:
     """
-    Извлечение студий anime из соответствующей части инфоблока в WP.
+    Извлечение студий anime из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы anime в WP (HTML-код).
     :return: Список студий anime в WP либо None.
     """
@@ -596,26 +693,23 @@ def studios(page_part: str) -> list[str] | None:
             while pos1 > 3:
                 if '<a ' in page_part[pos1:pos1 + 3]:
                     pos = page_part.find('>', pos1, pos2) + 1
-                    res.append(page_part[pos:page_part.find('</a>', pos, pos2)])
+                    res.append(page_part[pos:page_part.find('<', pos, pos2)].strip())
                 else:
-                    res.append(page_part[pos1:page_part.find('</li>', pos1, pos2)])
+                    res.append(page_part[pos1:page_part.find('<', pos1, pos2)].strip())
                 pos1 = page_part.find('<li>', pos1, pos2) + 4
-            return res
         else:
-            if '<a ' in page_part[pos:pos + 3]:
-                pos = page_part.find('>', pos, pos2) + 1
-                while pos > 0:
-                    res.append(page_part[pos:page_part.find('</a>', pos, pos2)])
-                    pos = page_part.find('<a ', pos, pos2)
-                    pos = page_part.find('>', pos, pos2) + 1
-                return res
-            res = [page_part[pos:pos2]]
-            return res
+            for name in page_part[pos:pos2].split("<br />"):
+                if '<a ' in name:
+                    pos = name.find('>') + 1
+                    res.append(name[pos:name.find('</a>', pos)].strip())
+                else:
+                    res.append(name)
+        return res
 
 
 def extraction_anime(page_part: str) -> dict[str, str | int | list[str] | list[dict[str, str]] | None]:
     """
-    Извлечение данных по anime из соответствующей части инфоблока в WP.
+    Извлечение данных по anime из соответствующей части инфо-блока в WP.
     :param page_part: Часть страницы anime в WP (HTML-код).
     :return: Словарь данных по anime в WP:
     {
@@ -628,6 +722,7 @@ def extraction_anime(page_part: str) -> dict[str, str | int | list[str] | list[d
         'director': list[dict[str, str] | None]
     }
     """
+    print("- " * 4, "wp.extraction_anime")
     result = {
         'name_eng': title(page_part),
         'format': anime_format(page_part),
@@ -643,16 +738,19 @@ def extraction_anime(page_part: str) -> dict[str, str | int | list[str] | list[d
 def extraction_data(page_parts: dict[str, dict[str, dict[str, str]]], _pages: dict[str, str]
                     ) -> dict[str, dict[str, str | int | list[str | None] | list[dict[str, str] | None] | None]]:
     """
-    Извлечение данных из частей инфоблоков в WP.
+    Извлечение данных из частей инфо-блоков в WP.
     :param page_parts: Словарь частей страниц — результат filter_page_parts.
     :param _pages: Словарь HTML-страниц из WP.
     :return: Словарь словарей данных по манге и anime в WP.
     """
+    print("- wp.extraction_data(page_parts, _pages)")
     res = {}
     for am, pages in page_parts.items():
+        print("- - ", am)
         if am not in res:
             res[am] = {}
         for tit, page_part in pages.items():
+            print("- " * 3, tit)
             res[am][tit] = (extraction_anime(page_part['page_part']) if am == A else
                             extraction_manga(page_part['page_part'], _pages[page_part['page_title']]))
     return res

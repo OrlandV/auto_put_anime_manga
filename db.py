@@ -102,8 +102,6 @@ class DB(dbc.DB):
                         if rec[self.fields[1]] == _value:
                             return rec[self.fields[0]]
             return id_d[self.fields[0]]
-        else:
-            return
 
     def add(self, fni: int, data: dict[str, str]) -> int:
         """
