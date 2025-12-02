@@ -79,7 +79,7 @@ def search_anime(search: str, year: int, form: str, pages: dict[int, str] = {},
     :param aids: Множество, список или кортеж ID уже найденных страниц anime.
     :return: Словарь страниц anime в WA либо None.
     """
-    print(f"- wa.search_anime('{search}', {year}, '{form}')")
+    print(f"- wa.search_anime('{search}', {year}, '{form if form else ''}')")
     search_ = points_codes(search)
     data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
                         params={'public_search': search_, 'global_sector': AN}).text
@@ -385,6 +385,8 @@ def wp_title(wa_page: str) -> str | None:
     pos2 = wa_page.find('<table ', pos1)
     pos1 = wa_page.find(WPE, pos1, pos2) + 29
     if pos1 == 28:
+        pos1 = wa_page.find(WPES, pos1, pos2) + 30
+    if pos1 == 29:
         return
     return unquote(wa_page[pos1:wa_page.find("' ", pos1, pos2)])
 

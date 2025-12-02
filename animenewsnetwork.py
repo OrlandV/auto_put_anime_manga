@@ -91,6 +91,9 @@ def pages(animes: dict[int, str], mangas: dict[int, str]) -> tuple[dict[int, str
             if pos1 == -1:
                 break
             pose = anime.find('/>', pos1)
+            if ' rel="part of"' in anime[pos1:pose]:
+                pos = pose
+                continue
             pos = anime.find('id=', pos1, pose) + 4
             id_ = int(anime[pos:anime.find('"', pos, pose)])
             pos = anime.find('rel=', pos1, pose) + 5

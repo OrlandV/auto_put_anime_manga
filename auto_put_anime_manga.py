@@ -492,6 +492,10 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                         author['name_rus'] = people['name_rus']
             adata = not_none(False)
             res[A].append(adata)
+    if not len(res[M]):
+        del res[M]
+    if not len(res[A]):
+        del res[A]
     return res
 
 
@@ -503,7 +507,7 @@ def title_unique(_data: dict[str, list[dict[str, str | list[dict[str, str]] | in
     :param _data: Единый словарь данных.
     :return: Единый словарь данных.
     """
-    for m in (M, A):
+    for m in _data.keys():
         titles = [(a['name_orig'], a['name_rom'], a['date_of_premiere']) for a in _data[m]]
         lt = len(titles)
         for a in range(lt - 1):
@@ -530,10 +534,10 @@ def control(_data: dict[str, list[dict[str, str | list[dict[str, str]] | int | l
     """
     for _am, els in _data.items():
         print(Table(els, _am.title()))
-    lm = len(_data[M])
+    lm = len(_data[M]) if M in _data else 0
     sav = input("Номера добавляемых в БД кортежей (через пробел), либо «*» для всех: ").split()
     if sav[0] == "*":
-        sav = list(range(1, lm + len(_data[A]) + 1))
+        sav = list(range(1, lm + (len(_data[A]) if A in _data else 0) + 1))
     i = 0
     sav_data = {}
     for _am, els in _data.items():
@@ -688,7 +692,7 @@ if __name__ == '__main__':
 
     # Добавление данных в БД
     am = db.DB()
-    if len(data[M]):
+    if M in data and len(data[M]):
         for i, md in enumerate(data[M]):
             mid = am.get_manga_id(md)
             if md['save'] and not mid:
@@ -701,7 +705,7 @@ if __name__ == '__main__':
                     for m in range(len(data[A][a][M])):
                         if data[A][a][M][m] == i:
                             data[A][a][M][m] = mid
-    if len(data[A]):
+    if A in data and len(data[A]):
         for ad in data[A]:
             aid = am.get_anime_id(ad)
             if ad['save'] and not aid:
