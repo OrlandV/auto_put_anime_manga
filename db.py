@@ -103,21 +103,23 @@ class DB(dbc.DB):
                             return rec[self.fields[0]]
             return id_d[self.fields[0]]
 
-    def add(self, fni: int, data: dict[str, str]) -> int:
+    def add(self, fni: int, _data: dict[str, str]) -> int:
         """
         Добавление данных по сущности, имя которой определяется по индексу в кортеже полей.
         :param fni: Индекс таблицы в кортеже полей self.fields.
-        :param data: Словарь данных по сущности.
+        :param _data: Словарь данных по сущности.
         :return: Присвоенный ID.
         """
         query = f'INSERT INTO {self.fields[fni]} VALUES (DEFAULT, '
         if fni == 53:
-            query += ((f'"{data[self.fields[16]]}"' if self.fields[16] in data and data[self.fields[16]] else "NULL") +
-                      ', ' + f'"{data[self.fields[17]]}", ' +
-                      (f'"{data[self.fields[18]]}"' if self.fields[18] in data and data[self.fields[18]] else "NULL"))
+            query += (
+                (f'"{_data[self.fields[16]]}"' if self.fields[16] in _data and _data[self.fields[16]] else "NULL") +
+                ', ' + f'"{_data[self.fields[17]]}", ' +
+                (f'"{_data[self.fields[18]]}"' if self.fields[18] in _data and _data[self.fields[18]] else "NULL")
+            )
         else:
             f = fni if fni in (23, 29) else 1
-            query += f'"{data[self.fields[f]]}"'
+            query += f'"{_data[self.fields[f]]}"'
         query += ')'
         return self.execute(query)
 

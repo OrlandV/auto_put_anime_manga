@@ -1,6 +1,19 @@
 # COOKIE авторизации на World Art.
 COOKIES_WA = {'user_login': '', 'user_password': ''}
 
+# COOKIE Wikipedia.
+COOKIES_WP = {
+    'WMF-Last-Access-Global': "",
+    'WMF-Uniq': "",
+    'GeoIP': "",
+    'WMF-Last-Access': "",
+    'VEECid': "",
+    'enwikimwclientpreferences': "",
+    'enwikimwuser-sessionId': "",
+    'WMF-DP': "",
+    'NetworkProbeLimit': ""
+}
+
 # Параметры подключения к БД.
 # DB_CONNECT = ("Сервер", "логин", "пароль", "БД")
 DB_CONNECT = ("localhost", "", "", "anime_manga")
@@ -9,7 +22,7 @@ DB_CONNECT = ("localhost", "", "", "anime_manga")
 PATH = ''
 
 # Версия браузера Mozilla Firefox для User-Agent (рекомендуется к актуализации).
-FIREFOX_VER = '145.0.2'
+FIREFOX_VER = '147.0'
 
 # WA-форматы anime в ANN.
 FORM_ANN = {
@@ -30,7 +43,7 @@ FORM_WP = {
 # Игнорируемые жанры.
 IGNORED_GENRES = {'дзёсэй', 'история', 'сёдзё', 'сёнэн', 'сэйнэн', 'Action', 'Adult', 'Doujinshi', 'Gender Bender',
                   'Harem', 'Historical', 'Josei', 'Mature', 'Seinen', 'Shoujo', 'Shoujo Ai', 'Shounen', 'Shounen Ai',
-                  'Yaoi', 'Yuri'}
+                  'Yaoi', 'Yuri', 'Tournament'}
 
 # Жанры AnimeNewsNetwork.
 GENRES_ANN = {

@@ -7,7 +7,7 @@
 ---
 ![Static Badge](https://img.shields.io/badge/Python-3.12-%233776AB)
 ![Static Badge](https://img.shields.io/badge/requests-2.32.5-black)
-![Static Badge](https://img.shields.io/badge/Wikipedia-1.4.0-black)
+![Static Badge](https://img.shields.io/badge/beautifulsoup4-4.14.3-black)
 ![Static Badge](https://img.shields.io/badge/python_dateutil-2.9.0-black)
 ![Static Badge](https://img.shields.io/badge/mysqlclient-2.2.7-black)
 ![Static Badge](https://img.shields.io/badge/Pillow-11.2.1-black)
@@ -178,15 +178,25 @@ pip install requests pillow python-dateutil wikipedia mysqlclient
 ## Использование
 1. Отредактировать файл `config.py`.
 
-    1.1. Прописать **COOKIE** авторизации на **World Art** в словаре `COOKIES_WA`.
+    1.1. Прописать в словаре `COOKIES_WA` **COOKIE** авторизации на **World Art**.
 
-    1.2. Прописать параметры подключения к БД ("Сервер", "логин", "пароль", "БД") в кортеж `DB_CONNECT`.
+    1.2. Прописать в словаре `COOKIES_WP` **COOKIE** для обхода анти-бот-защиты **Wikipedia** (en).
 
-    1.3. Прописать путь хранения микропостеров в переменную `PATH`. Например: `'C:/LOCALHOST/anime_manga/microposter/'`.
+    1.3. Прописать в кортеж `DB_CONNECT` параметры подключения к БД ("Сервер", "логин", "пароль", "БД").
 
-    1.4. Актуализировать версию браузера Mozilla Firefox для User-Agent (`FIREFOX_VER`).
+    1.4. Прописать путь хранения микропостеров в переменную `PATH`. Например: `'C:/LOCALHOST/anime_manga/microposter/'`.
 
-    1.5. Сохранить изменения файла `config.py`.
+    1.5. Актуализировать версию браузера Mozilla Firefox для User-Agent (`FIREFOX_VER`).
+
+    1.6. При желании отредактировать следующие словари:<ul>
+        <li>`FORM_ANN` — WA-форматы anime в **ANN**,</li>
+        <li>`FORM_WP` — WA-форматы anime в **Wikipedia**,</li>
+        <li>`IGNORED_GENRES` — игнорируемые жанры,</li>
+        <li>`GENRES_ANN` — жанры **AnimeNewsNetwork**,</li>
+        <li>`FREQUENCY` — периодичность издания в наименовании.</li>
+        </ul>
+
+    1.7. Сохранить изменения файла `config.py`.
 
 2. Отредактировать файл `input.py`.
 
@@ -208,7 +218,7 @@ pip install requests pillow python-dateutil wikipedia mysqlclient
     ```
 4. Если появился запрос на добавление нового жанра, согласиться (`Y`) или отказаться (`N`).
     ```text
-    Новый жанр в MangaUpdates! Adventure
+    Новый жанр в ANN! Adventure
     Добавить жанр? Y/N: 
     ```
     Если согласились, то укажите наименование жанра на русском для добавления в БД.

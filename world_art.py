@@ -388,25 +388,41 @@ def wp_title(wa_page: str) -> str | None:
         pos1 = wa_page.find(WPES, pos1, pos2) + 30
     if pos1 == 29:
         return
-    return unquote(wa_page[pos1:wa_page.find("' ", pos1, pos2)])
+    pose1 = wa_page.find("' ", pos1, pos2)
+    pose2 = wa_page.find('" ', pos1, pos2)
+    pose = min(pose1 if pose1 > 0 else pos2, pose2 if pose2 > 0 else pos2)
+    return unquote(wa_page[pos1:pose])
 
 
-def mu_manga_id(wa_page: str) -> int | None:
-    """
-    Поиск ID манги в MU по ссылке в WA.
-    :param wa_page: Страница манги (HTML-код) в WA.
-    :return: ID манги в MU, если найдена ссылка в WA. Иначе — None.
-    """
-    print("- wa.mu_manga_id(wa_page)")
-    pos = wa_page.find(WMU) + 43
-    if pos == 42:
-        return
-    pos2 = wa_page.find("' ", pos)
-    sleep(1)
-    page = requests.get(WMU, {'id': wa_page[pos:pos2]}).text
-    pos = page.find('"identifier":') + 13
-    pos2 = page.find(',', pos)
-    return int(page[pos:pos2])
+# def mu_manga_id(wa_page: str) -> int | None:
+#     """
+#     Поиск ID манги в MU по ссылке в WA.
+#     :param wa_page: Страница манги (HTML-код) в WA.
+#     :return: ID манги в MU, если найдена ссылка в WA. Иначе — None.
+#     """
+#     print("- wa.mu_manga_id(wa_page)")
+#     pos = wa_page.find(WMU) + 43
+#     if pos == 42:
+#         return
+#     pos2 = wa_page.find("' ", pos)
+#     heads = HEADERS.copy()
+#     heads.update({'Accept-Language': 'en-US,en;q=0.9,en-EN;q=0.8,en;q=0.7'})
+#     sleep(1)
+#     try:
+#         req = requests.get(WMU, {'id': wa_page[pos:pos2]}, headers=heads)
+#         page = req.text
+#     except requests.exceptions.ConnectionError:
+#         print("Ошибка подключения к", WMU)
+#         return
+#     except requests.exceptions.ReadTimeout:
+#         print(f"Время ожидания соединения с {WMU} истекло.")
+#         return
+#     if not page:
+#         print(WMU, "вернул", req.status_code)
+#         return
+#     pos = page.find('"identifier":') + 13
+#     pos2 = page.find(',', pos)
+#     return int(page[pos:pos2])
 
 
 def title_rom(page: str, am: bool = False) -> str:

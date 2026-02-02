@@ -2,18 +2,20 @@
 Функции декодирования символов Юникод или их замены, а так же преобразования даты и времени (продолжительности).
 """
 import re
+from html import unescape
 import dateutil.parser as date_parser
 import datetime
 
 
 def decode_name(name: str) -> str:
     """
-    Декодирование символов Юникод и шестьнадцатиричных кодов в наименовании.
+    Декодирование символов Юникод и шестнадцатеричных кодов в наименовании.
     :param name: Наименование с закодированными символами.
     :return: Декодированное наименование.
     """
     return re.sub(r'&#x(\w+);', lambda m: chr(int(m[1], 16)),
-                  re.sub(r'&#(\d+);', lambda m: chr(int(m[1])), name.replace('&#160;', ' ')))
+                  re.sub(r'&#(\d+);', lambda m: chr(int(m[1])),
+                         unescape(name.replace('&#160;', ' ').replace("\xa0", " "))))
 
 
 def o_ou(name: str) -> str:

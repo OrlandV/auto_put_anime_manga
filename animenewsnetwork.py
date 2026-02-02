@@ -1,13 +1,14 @@
 """
 Поиск страниц в AnimeNewsNetwork (далее — ANN) и их обработка.
 """
-import requests
 from time import sleep
+import requests
+from html import unescape
 import dateutil.parser as date_parser
 
 import decode_name as dn
 from constants import *
-from config import FORM_ANN, IGNORED_GENRES, GENRES_ANN, frequency
+from config import FORM_ANN, IGNORED_GENRES, GENRES_ANN, frequency  # COOKIES_ANN
 
 
 def xml(id_: int) -> str:
@@ -18,7 +19,7 @@ def xml(id_: int) -> str:
     """
     print(f"- - ann.xml({id_})")
     sleep(1)
-    return requests.get(f'{CANNE}api.xml', {'title': id_}).text
+    return requests.get(f'{CANNE}api.xml', {'title': id_}).text  # headers=HEADERS, cookies=COOKIES_ANN
 
 
 def manga_date_of_premiere(ann_xml: str) -> str | None:
@@ -61,9 +62,8 @@ def anime_date_of_premiere(ann_xml: str) -> str | None:
     date = ann_xml[pos:pos + 10]
     if '</' in date:
         date = date[:date.find('</')]
-        date_ = date.strip().split()
-        if len(date_) > 1 or len(date) == 4:
-            date = date_[0] + '-12-31'
+    if len(dl := date.strip().split(" ")) > 1 and not dl[1].isdigit() or len(date) == 4:
+        date = dl[0] + '-12-31'
     dp = date_parser.parse(date).strftime('%Y-%m-%d')
     if dp != date:
         return
@@ -97,10 +97,12 @@ def pages(animes: dict[int, str], mangas: dict[int, str]) -> tuple[dict[int, str
             pos = anime.find('id=', pos1, pose) + 4
             id_ = int(anime[pos:anime.find('"', pos, pose)])
             pos = anime.find('rel=', pos1, pose) + 5
+            if id_ in mangas or id_ in mangas_ or id_ in animes or id_ in animes_:
+                continue
             if 'adapt' in anime[pos:anime.find('"', pos, pose)] and id_ not in mangas and id_ not in mangas_:
                 manga = xml(id_)
-                rm[aid] = id_
                 if manga.find('<manga ') != -1:
+                    rm[aid] = id_
                     mangas_[id_] = manga
                     mpages(manga)
             elif id_ not in animes and id_ not in animes_:
@@ -182,20 +184,18 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
         t = dn.normal_name(t.replace('<b>', '').replace('</b>', ''))
         return id_, text, t
 
-    def val_year(_id: int, am: bool = False) -> bool:
+    def val_year(am: bool = False) -> bool:
         """
         Сверка года премьеры манги или anime из поискового ответа ANN (по ID) с заданным годом.
-        :param _id: ID манги или anime.
         :param am: Переключатель anime/манга (False/True).
         :return: True — год не соответствует; False — год соответствует.
         """
-        page = xml(_id)
         y = manga_date_of_premiere(page) if am else anime_date_of_premiere(page)
         return int(y[:4]) != year if y else False
 
     print(f"- ann.search_pages('{search}', {year}, '{form}')")
     search_ = dn.normal_name(search)
-    data = requests.get(f'{SANNE}search/name', {'q': search_}).text
+    data = requests.get(f'{SANNE}search/name', {'q': search_}).text  # headers=HEADERS, cookies=COOKIES_ANN
     animes = {}
     mangas = {}
     pos = data.find(f'<strong>{search_}</strong>') + len(search_) + 15
@@ -209,9 +209,10 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
             if search_ not in t:
                 break
             t = text[text.find('<i>') + 5:text.find('</i>') - 1].split()
-            if 'live-action' in t or 'novel' in t or (form and form != FORM_ANN[t[0]]) or val_year(aid):
+            page = xml(aid)
+            if 'live-action' in t or 'novel' in t or (form and form != FORM_ANN[t[0]]) or val_year():
                 continue
-            animes[aid] = xml(aid)
+            animes[aid] = page
         elif data[pos - 5:pos] == M:
             mid, text, t = pars()
             if search_ not in t:
@@ -221,8 +222,9 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
                 t = text[pos1:text.find('</i>') - 1]
                 if 'novel' in t:
                     continue
-            if t.find(search_) == 0 and not val_year(mid, True):
-                mangas[mid] = xml(mid)
+            page = xml(mid)
+            if t.find(search_) == 0 and not val_year(True):
+                mangas[mid] = page
     return pages(animes, mangas)
 
 
@@ -236,7 +238,7 @@ def title(ann_xml: str, lang: str) -> str:
     langs = {'orig': 'JA', 'rom': 'JA', 'eng': 'EN', 'rus': 'RU'}
     pos1 = ann_xml.find('type="Main title" lang="') + 28
     if pos1 > 27 and ann_xml[pos1 - 4:pos1 - 2] == (langs[lang] if lang in ("rom", "eng") else ""):
-        return ann_xml[pos1:ann_xml.find('</info>', pos1)]
+        return unescape(ann_xml[pos1:ann_xml.find('</info>', pos1)])
     res = ""
     pos1 = pos2 = 10
     while 9 < pos1 <= pos2:
@@ -257,7 +259,7 @@ def title(ann_xml: str, lang: str) -> str:
             if lang in ("rom", "eng"):
                 break
         pos1 = pos2
-    return res
+    return unescape(res)
 
 
 def html(page: str, params: dict) -> str:
@@ -267,8 +269,20 @@ def html(page: str, params: dict) -> str:
     :param params: GET-параметры.
     :return: Страница (HTML-код) в ANN.
     """
-    sleep(1)
-    return requests.get(f'{SANNE}{page}.php', params).text
+    # sleep(1)
+    # return requests.get(f'{SANNE}{page}.php', params, headers=HEADERS, cookies=COOKIES_ANN).text
+
+    url = f"{SANNE}{page}.php?"
+    for k, v in params.items():
+        url += f"{k}={v}&"
+    print("Анти-бот-защита ANN!\n1. Откройте в своём браузере ссылку")
+    print(url[:-1])
+    print("2. Откройте исходный код страницы.")
+    print("3. Скопируйте (с заменой) HTML-код в файл «ANN_temp.html», находящийся в папке проекта.")
+    print("4. Когда файл будет готов, просто нажмите здесь ENTER.")
+    input()
+    with open("ANN_temp.html", encoding="utf8") as file:
+        return file.read()
 
 
 def authors(ann_xml: str, am: bool = False) -> list[dict[str, str] | None]:
@@ -288,7 +302,7 @@ def authors(ann_xml: str, am: bool = False) -> list[dict[str, str] | None]:
     ) if am else ('<task>Chief Director</task>', '<task>Director</task>')
     result = []
     for staff in staffs:
-        pos = posa = posb = 0
+        posa = 0
         while True:
             posa = ann_xml.find('<staff ', posa)
             if posa == -1:
@@ -296,25 +310,23 @@ def authors(ann_xml: str, am: bool = False) -> list[dict[str, str] | None]:
             posb = ann_xml.find('</staff>', posa)
             pos = ann_xml.find(staff, posa, posb)
             if pos != -1:
-                break
+                pos = ann_xml.find('<person id="', pos, posb) + 12
+                pid = int(ann_xml[pos:ann_xml.find('"', pos, posb)])
+                ann_page = html('people', {'id': pid})
+                pos = ann_page.find('<h1 id="page_header" class="same-width-as-main">') + 49
+                pose = ann_page.find('</div>', pos)
+                pos2 = ann_page.find('</h1>', pos, pose)
+                name_rom_ = ann_page[pos:pos2].strip().split()
+                name_rom = dn.normal_name(name_rom_[1].lower()).title() + ' ' + dn.normal_name(
+                    name_rom_[0].lower()).title()
+                name_orig = ann_page[pos2 + 6:pose].strip()
+                if not name_orig:
+                    for i in ("3", "2"):
+                        pos = ann_page.find(f'<div id="infotype-1{i}"')
+                        pos = ann_page.find("<span>", pos) + 6
+                        name_orig += ann_page[pos:ann_page.find("<", pos)] + (" " if i == "3" else "")
+                result.append({'name_orig': name_orig, 'name_rom': name_rom})
             posa = posb
-        if posa == -1:
-            continue
-        pos = ann_xml.find('<person id="', pos, posb) + 12
-        pid = int(ann_xml[pos:ann_xml.find('"', pos, posb)])
-        ann_page = html('people', {'id': pid})
-        pos = ann_page.find('<h1 id="page_header" class="same-width-as-main">') + 49
-        pose = ann_page.find('</div>', pos)
-        pos2 = ann_page.find('</h1>', pos, pose)
-        name_rom_ = ann_page[pos:pos2].strip().split()
-        name_rom = dn.normal_name(name_rom_[1].lower()).title() + ' ' + dn.normal_name(name_rom_[0].lower()).title()
-        name_orig = ann_page[pos2 + 6:pose].strip()
-        if not name_orig:
-            for i in ("3", "2"):
-                pos = ann_page.find(f'<div id="infotype-1{i}"')
-                pos = ann_page.find("<span>", pos) + 6
-                name_orig += ann_page[pos:ann_page.find("<", pos)] + (" " if i == "3" else "")
-        result.append({'name_orig': name_orig, 'name_rom': name_rom})
     return result
 
 
@@ -354,6 +366,9 @@ def publication(mid: int, ann_xml: str) -> dict[int, dict[str, str]] | None:
     pos = m_html.find('<div id="infotype-related">') + 27
     pose = m_html.find('</div>', pos)
     pos = m_html.find('serialized in', pos, pose)
+    posu = m_html.find(" USA", pos, pose)
+    if posu > 0:
+        pos = m_html.find('serialized in', posu, pose)
     id_ = 0
     if pos != -1:
         pos = m_html.find(f'{M}.php?id=', pos, pose) + 13
@@ -413,7 +428,7 @@ def genres(ann_xml: str) -> list[str]:
                         result.append(g[g.find(':') + 2:-1])
                         break
                 else:
-                    print('Новый жанр в ANN!', genre)
+                    print('\nНовый жанр в ANN!', genre)
                     add = input('Добавить жанр? Y/N: ')
                     if add == 'Y' or add == 'y':
                         new_genre = input('Наименование жанра на русском: ')
