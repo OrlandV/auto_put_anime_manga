@@ -7,6 +7,7 @@ MU — MangaUpdates,
 WA — World Art,
 WP — Wikipedia (en).
 """
+from xml.etree.ElementTree import Element
 from bs4 import BeautifulSoup
 
 from input import *
@@ -20,9 +21,9 @@ import db
 from Table import Table
 
 
-def ann_pages_in_wa(_ann_anime_pages: dict[int, str], _ann_manga_pages: dict[int, str],
-                    _wa_anime_pages: dict[int, str] | None, _wa_manga_pages: dict[int, str] | None
-                    ) -> tuple[dict[int, str], dict[int, str], dict[int, int]]:
+def ann_pages_in_wa(_ann_anime_pages: dict[int, Element], _ann_manga_pages: dict[int, Element],
+                    _wa_anime_pages: dict[int, BeautifulSoup] | None, _wa_manga_pages: dict[int, BeautifulSoup] | None
+                    ) -> tuple[dict[int, Element], dict[int, Element], dict[int, int]]:
     """
     Получение XML-страниц из ANN по ссылкам в страницах WA.
     :param _ann_anime_pages: Словарь {ANN_ID: XML} XML-страниц anime из ANN.
@@ -575,7 +576,7 @@ if __name__ == '__main__':
     print("ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages, wa_manga_pages)")
     ann_anime_pages, ann_manga_pages, ann_rm = ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages,
                                                                wa_manga_pages)
-    print("wp_pages_in_wa(title)")
+    print(f"wp_pages_in_wa('{title}')")
     wp_pages = wp_pages_in_wa(title)
     print("wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))")
     wp_page_parts = wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))

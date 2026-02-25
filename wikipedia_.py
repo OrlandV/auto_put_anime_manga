@@ -1,33 +1,23 @@
 """
 Поиск страниц в Wikipedia (en) (далее — WP) и их обработка.
 """
-from time import sleep
-import requests
 from bs4 import BeautifulSoup, Tag, NavigableString
 import dateutil.parser as date_parser
 
-import decode_name as dn
 from constants import *
-from config import COOKIES_WP, FORM_WP, frequency
+from file_cache import anti_bot
+from config import FORM_WP, frequency
+import decode_name as dn
 
-CIS = 'class="infobox-subheader"'
 
-
-def page(url: str, _text: bool = False) -> str | None:
+def page(url: str) -> BeautifulSoup | None:
     """
     Получение HTML-кода страницы по внутренней ссылке в WP. Используется пакет requests.
     :param url: Внутренняя ссылка (после /wiki/).
-    :param _text: Переключатель режима возврата функции content/text.
-    :return: HTML-код страницы в виде текста или контента либо None, если статус-код не входит в интервал [200, 400).
+    :return: HTML-код страницы или None, если статус-код не входит в интервал [200, 400).
     """
-    sleep(1)
-    result = requests.get(
-        WPES + url,
-        headers=HEADERS,
-        cookies=COOKIES_WP
-    )
-    if result.ok:
-        return dn.decode_name(result.text) if _text else result.content
+    res = BeautifulSoup(anti_bot("WP", WPES + url), "html.parser")
+    return res if len(res) else None
 
 
 class Page:
@@ -41,45 +31,25 @@ class Page:
     def __init__(self, search: str):
         """
         Получение страницы (HTML-кода) из WP.
+        Если искомое наименование не найдено, происходит переключение на page, а пробелы в search заменяются на «_».
         :param search: Искомое наименование.
         """
-        url = search.replace(' ', '_')
-        self.html = page(url)
-        self.url = url
-
-
-# def _pos_table(_page: str) -> int:
-#     """
-#     Поиск инфо-бокса.
-#     :param _page: HTML-код.
-#     :return: Позиция инфо-бокса. (Позиция после «<table ».)
-#     """
-#     post = _page.find('<table') + 7
-#     for box in ('class="box-Lead_too_short', 'class="box-Multiple_issues',
-#                 'class="box-More_citations_needed', 'class="box-In-universe'):
-#         if _page.find(box, post) != -1:
-#             post = _page.find('<table', post) + 7
-#     return post
-
-
-# def _pos_ab(_page: str, a: int, b: int) -> tuple[int, int]:
-#     """
-#     Поиск текста между HTML-тегами.
-#     :param _page: HTML-код.
-#     :param a: Позиция начала поиска.
-#     :param b: Позиция конца поиска.
-#     :return: Позиции начала и конца текста.
-#     """
-#     posa = _page.find('>', a, b) + 1
-#     posb = _page.find('<', posa, b)
-#     while posa != b and (posa == posb or posa == posb + 1 or len(_page[posa:posb].strip()) < 4):
-#         posa = _page.find('>', posa, b) + 1
-#         posb = _page.find('<', posa, b)
-#     if "<style " in _page[_page.find("<", posa - 57, posa - 1):posa]:
-#         return _pos_ab(_page, posb, b)
-#     if posb < 0:
-#         posb = b
-#     return posa, posb
+        self.url = None
+        _html = BeautifulSoup(anti_bot("WP", WPE_SEARCH + search.replace(" ", "+")), "html.parser")
+        ul = _html.find("ul", {'class': "mw-search-results"}).contents
+        for li in ul:
+            div = li.find_next("div", {'class': "mw-search-result-heading"})
+            if search in div.a.text:
+                self.url = div.a.attrs['href'].removeprefix("/wiki/")
+            elif search in dn.normal_name(li.find_next("div", {'class': "searchresult"}).text):
+                self.url = li.a.attrs['href'].removeprefix("/wiki/")
+            if self.url:
+                self.html = page(self.url)
+                break
+        else:
+            url = search.replace(" ", "_")
+            self.html = page(url)
+            self.url = url
 
 
 def search_pages(search: str, res: dict[str, BeautifulSoup] = {}) -> dict[str, BeautifulSoup]:
@@ -106,18 +76,17 @@ def search_pages(search: str, res: dict[str, BeautifulSoup] = {}) -> dict[str, B
     print(f"- wp.search_pages('{search}')")
     _page = Page(search)
     if _page.html:
-        soup_page = BeautifulSoup(_page.html, "html.parser")
-        if soup_page.find(lambda tag: tag.name == "div" and tag.get('class') == ["shortdescription"] and
-                                      tag.get('style') == ["display:none"]):
+        if _page.html.find(lambda tag: tag.name == "div" and tag.get('class') == ["shortdescription"] and
+                                       tag.get("style") == ["display:none"]):
             return res
-        res[_page.url.replace("_", " ")] = soup_page
-        for link in (soup_page.find("table", {'class': "infobox"}).
+        res[_page.url.replace("_", " ")] = _page.html
+        for link in (_page.html.find("table", {'class': "infobox"}).
                 find_all("link", {'href': "mw-data:TemplateStyles:r1316064257"})):
             if subheader := link.find("td", {'class': "infobox-subheader"}):
                 subheader = subheader.text
                 if "anim" in subheader.lower() or "Manga" in subheader:
                     res_update_ul()
-                elif subheader in ('Related series', 'Feature films', 'Related works', 'Television series', 'Films'):
+                elif subheader in ("Related series", "Feature films", "Related works", "Television series", "Films"):
                     if ol := link.find("ol"):
                         res_update(ol)
                     else:
@@ -213,8 +182,7 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]) -> dict[str, dict
     return result
 
 
-def filter_page_parts(pages: dict[str, dict[str, dict[str, BeautifulSoup]]]
-                      ) -> dict[str, dict[str, dict[str, BeautifulSoup]]]:
+def filter_page_parts(pages: dict[str, dict[str, dict[str, BeautifulSoup]]]) -> dict[str, dict[str, BeautifulSoup]]:
     """
     Фильтр частей страниц, удаляющий повторы, и переформатирование словаря частей страниц.
     :param pages: Словарь частей страниц — результат manga_anime_in_page.
@@ -251,16 +219,15 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, BeautifulSoup]]]
                 if fpp:
                     if am == A:
                         ttl = ttl.replace(' (Original video animation)', ' (OVA)')
-                    # ttl += f' ({date_of_premiere(page_part)})'
                     res[am][dn.title_index(res[am], ttl)] = page_part
     return res
 
 
 def title_orig(part: BeautifulSoup) -> str | None:
     """
-    Извлечение оригинального наименования манги из соответствующей части инфо-блока в WP.
+    Извлечение оригинального наименования манги или anime из соответствующей части инфо-блока в WP.
     :param part: Часть страницы манги в WP (HTML-код).
-    :return: Оригинальное наименование манги либо None.
+    :return: Оригинальное наименование манги или anime в WP, если найдено. Иначе — None.
     """
     th = part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"] and tag.text == "Kanji")
     if th:
@@ -289,11 +256,7 @@ def authors(part: BeautifulSoup, *args) -> list[dict[str, str] | None]:
         :param _name: Ромадзи (английское) имя из страницы как есть.
         """
         apage = page(_name.removeprefix("/wiki/"))
-        # _name = _name.removeprefix("/wiki/")
-        # with open(f"{_name}.htm", "r", encoding="utf8") as _file:
-        #     apage = _file.read()
         if apage:
-            apage = BeautifulSoup(apage, "html.parser")
             _th = apage.find("th", {'class': "infobox-above"})
             _name_rom = normal_rom(_th.text) if _th else ""
             div = apage.find(lambda tag: tag.parent.name == "td" and tag.parent.has_attr("class") and
@@ -358,9 +321,7 @@ def number_of_chapters(part: BeautifulSoup) -> int:
     td = part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"] and
                                tag.string == "Volumes").next_sibling
     if td.a and td.a.has_attr("href"):
-        vol_page = BeautifulSoup(page(td.a.attrs['href'].removeprefix("/wiki/")), "html.parser")
-        # from List_of_YuYu_Hakusho_chapters import html
-        # vol_page = BeautifulSoup(html, "html.parser")
+        vol_page = page(td.a.attrs['href'].removeprefix("/wiki/"))
         h = vol_page.find(lambda tag: tag.name == "h2" and tag.has_attr("id") and
                                       tag.attrs['id'] in ("Volumes", "Volume_list"))
     if not h:
@@ -436,7 +397,7 @@ def poster(part: BeautifulSoup) -> str | None:
     """
     Извлечение ссылки на постер из соответствующей части инфо-блока в WP.
     :param part: Часть страницы манги в WP (HTML-код).
-    :return: Ссылка на постер в WP или None.
+    :return: Ссылка на постер в WP, если найдена. Иначе — None.
     """
     td = part.find("td", {'class': "infobox-image"})
     if td:
@@ -450,7 +411,7 @@ def extraction_manga(part: BeautifulSoup, tit: str
     """
     Извлечение данных по манге из соответствующей части инфо-блока в WP.
     :param part: Часть страницы манги в WP (HTML-код).
-    :param tit: Наименование страницы.
+    :param tit: Заголовок страницы.
     :return: Словарь данных по манге в WP:
     {
         'name_orig': str,
@@ -547,7 +508,7 @@ def extraction_anime(part: BeautifulSoup, tit: str) -> dict[str, str | int | lis
     """
     Извлечение данных по anime из соответствующей части инфо-блока в WP.
     :param part: Часть страницы anime в WP (HTML-код).
-    :param tit: Наименование страницы.
+    :param tit: Заголовок страницы.
     :return: Словарь данных по anime в WP:
     {
         'name_orig': str,
@@ -576,7 +537,7 @@ def extraction_anime(part: BeautifulSoup, tit: str) -> dict[str, str | int | lis
     return result
 
 
-def extraction_data(page_parts: dict[str, dict[str, dict[str, Tag]]]
+def extraction_data(page_parts: dict[str, dict[str, BeautifulSoup]]
                     ) -> dict[str, dict[str, str | int | list[str | None] | list[dict[str, str] | None] | None]]:
     """
     Извлечение данных из частей инфо-блоков в WP.
@@ -593,23 +554,3 @@ def extraction_data(page_parts: dict[str, dict[str, dict[str, Tag]]]
             print("- " * 3, tit)
             res[am][tit] = (extraction_anime(page_part, tit) if am == A else extraction_manga(page_part, tit))
     return res
-
-
-# def read_html(filename: str) -> str:
-#     with open(filename + ".html", "r", encoding="utf8") as file:
-#         return file.read()
-
-
-# def html_files():
-#     import os
-#     files = []
-#     for file in os.listdir("."):
-#         file_name = os.path.splitext(file)
-#         if file_name[1][1:].lower() == "html" and file_name[0] != "ANN_temp":
-#             files.append(file_name[0])
-#     files.sort()
-#     return ((name, read_html(name)) for name in files)
-
-
-# if __name__ == '__main__':
-#     wp_data = extraction_data(filter_page_parts(manga_anime_in_page(html_files())))

@@ -21,6 +21,9 @@ DB_CONNECT = ("localhost", "", "", "anime_manga")
 # Путь хранения микропостеров. Например: 'C:/LOCALHOST/anime_manga/microposter/'.
 PATH = ''
 
+# Версия операционной системы Windows ('10' или '11').
+WINDOWS_VER = '11'
+
 # Версия браузера Mozilla Firefox для User-Agent (рекомендуется к актуализации).
 FIREFOX_VER = '147.0'
 
