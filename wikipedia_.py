@@ -50,6 +50,9 @@ class Page:
             url = search.replace(" ", "_")
             self.html = page(url)
             self.url = url
+        if f"{A} and {M}" not in self.html.text.lower():
+            self.html = None
+            self.url = None
 
 
 def search_pages(search: str, res: dict[str, BeautifulSoup] = {}) -> dict[str, BeautifulSoup]:
@@ -70,14 +73,14 @@ def search_pages(search: str, res: dict[str, BeautifulSoup] = {}) -> dict[str, B
 
     def res_update_ul() -> None:
         ul = link.find("ul")
-        if not ul.find("div"):
+        if ul and not ul.find("div"):
             res_update(ul)
 
-    print(f"- wp.search_pages('{search}')")
+    print(f"wp.search_pages('{search}')")
     _page = Page(search)
     if _page.html:
-        if _page.html.find(lambda tag: tag.name == "div" and tag.get('class') == ["shortdescription"] and
-                                       tag.get("style") == ["display:none"]):
+        if _page.html.find(lambda tag: tag.name == "div" and tag.get('class') == ["shortdescription"]
+                                       and tag.get("style") == ["display:none"]):
             return res
         res[_page.url.replace("_", " ")] = _page.html
         for link in (_page.html.find("table", {'class': "infobox"}).
@@ -86,7 +89,8 @@ def search_pages(search: str, res: dict[str, BeautifulSoup] = {}) -> dict[str, B
                 subheader = subheader.text
                 if "anim" in subheader.lower() or "Manga" in subheader:
                     res_update_ul()
-                elif subheader in ("Related series", "Feature films", "Related works", "Television series", "Films"):
+                elif subheader in ("Related series", "Feature films", "Related works", "Television series", "Films",
+                                   "Spin-offs"):
                     if ol := link.find("ol"):
                         res_update(ol)
                     else:
@@ -116,25 +120,39 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]) -> dict[str, dict
     }
     """
     def res_add() -> None:
-        nonlocal res
+        nonlocal res, res_, ttl
         if am not in res:
             res[am] = {}
+        ttl = ttl or ttl_['rom'] or ttl_['eng'] or ttl_['orig']
+        if ttl in res[am]:
+            t1 = f"{ttl} ({res[am][ttl].td.text})"
+            res[am][t1] = res[am][ttl]
+            del res[am][ttl]
+            ttl += f" ({t})"
         res[am][ttl] = res_
+        res_ = BeautifulSoup("<table></table>", "html.parser")
+        ttl = None
 
-    print("- wp.manga_anime_in_page(pages):")
+    print("wp.manga_anime_in_page(pages):")
     result = {}
     pages = pages.items() if isinstance(pages, dict) else pages
     for page_title, _page in pages:
-        print("- -", page_title)
-        ns = n = e = ias = ttl = None
+        print("-", page_title)
+        s = ns = n = e = ias = ttl = None
         if isinstance(_page, str):
             _page = BeautifulSoup(_page, "html.parser")
         tr = _page.find("table", {'class': "infobox"}).tbody.contents
         i = 0
         res_ = BeautifulSoup("<table></table>", "html.parser")
         res = {}
-        while True:
-            if not isinstance(tr[i], NavigableString) and (tr[i].td or tr[i].th):
+        ttl_ = {'eng': None, 'orig': None, 'rom': None}
+        while i < len(tr):
+            if s and isinstance(tr[i], NavigableString):
+                s = False
+                i += 1
+                continue
+            elif (not s and not isinstance(tr[i], NavigableString)
+                  and (tr[i].th or (tr[i].td and tr[i].td.attrs['class'] != ["infobox-full-data"]))):
                 if tr[i].td and tr[i].td.has_attr("class") and tr[i].td.attrs['class'] == ["infobox-subheader"]:
                     t = tr[i].td.text
                     if 'Manga' in t or 'anim' in t.lower():
@@ -145,19 +163,34 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]) -> dict[str, dict
                             n = True
                         else:
                             am = M if 'Manga' in t else A
-                    elif t in ('Related series', 'Feature films', 'Related works', 'Television series', 'Films'):
-                        break
+                    elif t in ('Related series', 'Feature films', 'Related works', 'Television series', 'Films',
+                               'Spin-offs'):
+                        s = True
+                        i += 1
+                        continue
                     else:
-                        ttl = t
-                elif (tr[i].th and tr[i].th.has_attr("class") and
-                      tr[i].th.attrs['class'] == ["infobox-above", "summary"]):
+                        ttl_['eng'] = t
+                elif (tr[i].th and tr[i].th.has_attr("class")
+                      and tr[i].th.attrs['class'] == ["infobox-above", "summary"]):
                     ias = True
                     ttl = tr[i].th.text
                 elif ias and tr[i].th and tr[i].th.string == "Directed by":
                     am = A
-                elif (tr[i].th and tr[i].th.has_attr("class") and tr[i].th.attrs['class'] == ["infobox-header"] and
-                      not ias and not ttl):
-                    ttl = tr[i].th.text
+                elif (tr[i].th and tr[i].th.has_attr("class") and tr[i].th.attrs['class'] == ["infobox-header"]
+                      and not ias):
+                    if tr[i].th.span:
+                        if sp := tr[i].th.find(
+                            lambda tag: tag.name == "span" and tag.has_attr("title")
+                                        and tag.attrs['title'] == "Japanese-language text"
+                        ):
+                            ttl_['orig'] = sp.text
+                        if sp := tr[i].th.find(
+                            lambda tag: tag.name == "span" and tag.has_attr("title")
+                                        and tag.attrs['title'] == "Japanese-language romanization"
+                        ):
+                            ttl_['rom'] = sp.text
+                    else:
+                        ttl = tr[i].th.text
                 if not e and not n:
                     res_.table.append(tr[i])
             elif isinstance(tr[i], NavigableString) and not ns:
@@ -167,14 +200,12 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]) -> dict[str, dict
                 res_add()
                 if e:
                     break
-                res_ = BeautifulSoup("<table></table>", "html.parser")
                 am = M
             else:
                 i += 1
             if n:
                 res_add()
-                res_ = BeautifulSoup("<table></table>", "html.parser")
-                ias= ttl = False
+                ias = ttl = False
             if not tr:
                 res_add()
                 break
@@ -201,16 +232,16 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, BeautifulSoup]]]) -> 
         }
     }
     """
-    print("- wp.filter_page_parts(pages):")
+    print("wp.filter_page_parts(pages):")
     res = {}
     for page_title, _page in pages.items():
-        print("- -", page_title)
+        print("-", page_title)
         for am, page_parts in _page.items():
-            print("- " * 3, am)
+            print("- " * 2, am)
             if am not in res:
                 res[am] = {}
             for ttl, page_part in page_parts.items():
-                print("- " * 4, ttl)
+                print("- " * 3, ttl)
                 fpp = True
                 for pp in res[am].values():
                     if pp == page_part:
@@ -218,7 +249,8 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, BeautifulSoup]]]) -> 
                         break
                 if fpp:
                     if am == A:
-                        ttl = ttl.replace(' (Original video animation)', ' (OVA)')
+                        ttl = (ttl.replace(' (Original video animation)', ' (OVA)')
+                               .replace(' (Anime television series)', ' (TV)'))
                     res[am][dn.title_index(res[am], ttl)] = page_part
     return res
 
@@ -259,10 +291,10 @@ def authors(part: BeautifulSoup, *args) -> list[dict[str, str] | None]:
         if apage:
             _th = apage.find("th", {'class': "infobox-above"})
             _name_rom = normal_rom(_th.text) if _th else ""
-            div = apage.find(lambda tag: tag.parent.name == "td" and tag.parent.has_attr("class") and
-                                         tag.parent.attrs['class'] == ["infobox-subheader"] and tag.name == "div" and
-                                         tag.has_attr("class") and tag.attrs['class'] == ["nickname"] and
-                                         tag.has_attr("lang") and tag.attrs['lang'] == "ja")
+            div = apage.find(lambda tag: tag.parent.name == "td" and tag.parent.has_attr("class")
+                                         and tag.parent.attrs['class'] == ["infobox-subheader"] and tag.name == "div"
+                                         and tag.has_attr("class") and tag.attrs['class'] == ["nickname"]
+                                         and tag.has_attr("lang") and tag.attrs['lang'] == "ja")
             if div:
                 _name_orig = div.text
             elif span := apage.find("span", {'lang': "ja"}):
@@ -283,8 +315,8 @@ def authors(part: BeautifulSoup, *args) -> list[dict[str, str] | None]:
 
     result = []
     for staff in args:
-        th = part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"] and
-                                   staff in tag.text)
+        th = part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"]
+                                   and staff in tag.text)
         if th:
             td = th.next_sibling
             if td and td.ul:
@@ -306,9 +338,9 @@ def number_of_volumes(part: BeautifulSoup) -> int:
     :param part: Часть страницы манги в WP (HTML-код).
     :return: Количество томов манги в WP.
     """
-    td = dn.decode_name(part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"] and
-                                              tag.string == "Volumes").next_sibling.text)
-    return int(td[:td.find(" ")])
+    td = dn.decode_name(part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"]
+                                              and tag.string == "Volumes").next_sibling.text)
+    return int(td[:td.find(" ")] if " " in td else td)
 
 
 def number_of_chapters(part: BeautifulSoup) -> int:
@@ -318,12 +350,12 @@ def number_of_chapters(part: BeautifulSoup) -> int:
     :return: Количество глав манги в WP. 0 — нет данных.
     """
     h = None
-    td = part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"] and
-                               tag.string == "Volumes").next_sibling
+    td = part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"]
+                               and tag.string == "Volumes").next_sibling
     if td.a and td.a.has_attr("href"):
         vol_page = page(td.a.attrs['href'].removeprefix("/wiki/"))
-        h = vol_page.find(lambda tag: tag.name == "h2" and tag.has_attr("id") and
-                                      tag.attrs['id'] in ("Volumes", "Volume_list"))
+        h = vol_page.find(lambda tag: tag.name == "h2" and tag.has_attr("id")
+                                      and tag.attrs['id'] in ("Volumes", "Volume_list"))
     if not h:
         h = part.find(lambda tag: tag.name == "h4" and tag.has_attr("id") and tag.attrs['id'] == "Chapter_list")
     if not h:
@@ -368,8 +400,8 @@ def publications(part: BeautifulSoup) -> list[dict[str, str | int]]:
     """
     res = {'publication': []}
     for pp, tpp in {'publishing': "Published by", 'publication': "Magazine"}.items():
-        th = part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"] and
-                                   dn.decode_name(tag.text) == tpp)
+        th = part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"]
+                                   and dn.decode_name(tag.text) == tpp)
         if th:
             td = th.next_sibling
             ul = td.ul
@@ -380,8 +412,10 @@ def publications(part: BeautifulSoup) -> list[dict[str, str | int]]:
                 t = td.text
                 if pp == "publishing":
                     res[pp] = t
-                elif t not in res[pp]:
-                    res[pp].append(t)
+                else:
+                    for ti in t.split(", "):
+                        if ti not in res[pp]:
+                            res[pp].append(ti)
         elif pp == 'publication':
             res.update({pp: [f'? ({res['publishing']})'], 'type': 2})
         else:
@@ -420,7 +454,7 @@ def extraction_manga(part: BeautifulSoup, tit: str
         'number_of_volumes': int,
         'number_of_chapters': int,
         'date_of_premiere': str | None,
-        'publication': list[dict[str, str | int]],
+        'publications': list[dict[str, str | int]],
         'poster': str | None
     }
     """
@@ -432,7 +466,7 @@ def extraction_manga(part: BeautifulSoup, tit: str
         'number_of_volumes': number_of_volumes(part),
         'number_of_chapters': number_of_chapters(part),
         'date_of_premiere': date_of_premiere(part),
-        'publication': publications(part),
+        'publications': publications(part),
         'poster': poster(part)
     }
     return result
@@ -444,8 +478,20 @@ def anime_format(part: BeautifulSoup) -> str | None:
     :param part: Часть страницы anime в WP (HTML-код).
     :return: Формата anime в WP либо None.
     """
+    def _res(t: str) -> str | None:
+        return FORM_WP[t] if t in FORM_WP else FORM_WP['Anime film series'] if 'movie' in t.lower() else None
+
     t = part.tr.text
-    return FORM_WP[t] if t in FORM_WP else FORM_WP['Anime film series'] if 'movie' in t.lower() else None
+    res = _res(t)
+    if res:
+        return res
+    tds = part.find_all(lambda tag: tag.name == "td" and tag.has_attr("class")
+                                    and tag.attrs['class'] == ["infobox-subheader"])
+    if tds:
+        for td in tds:
+            res = _res(td.text)
+            if res:
+                return res
 
 
 def number_of_episodes(part: BeautifulSoup) -> int:
@@ -455,14 +501,17 @@ def number_of_episodes(part: BeautifulSoup) -> int:
     :return: Количество эпизодов anime в WP.
     """
     for t in ("Episodes", "No. of episodes"):
-        th = part.find(lambda tag: tag.name == "th" and tag.has_attr("class") and
-                                   tag.attrs['class'] == ["infobox-label"] and dn.decode_name(tag.text) == t)
+        th = part.find(lambda tag: tag.name == "th" and tag.has_attr("class")
+                                   and tag.attrs['class'] == ["infobox-label"] and dn.decode_name(tag.text) == t)
         if th:
             break
     else:
         return 1
     res = dn.decode_name(th.next_sibling.text)
-    return int(res[:res.find(" ")] if " " in res else res)
+    for p in (" ", ","):
+        if p in res:
+            res = res[:res.find(p)]
+    return int(res)
 
 
 def duration(part: BeautifulSoup) -> str | None:
@@ -472,8 +521,8 @@ def duration(part: BeautifulSoup) -> str | None:
     :return: Продолжительность эпизода anime в WP либо None.
     """
     for t in ("Runtime", "Running time"):
-        th = part.find(lambda tag: tag.name == "th" and tag.has_attr("class") and
-                                   tag.attrs['class'] == ["infobox-label"] and dn.decode_name(tag.text) == t)
+        th = part.find(lambda tag: tag.name == "th" and tag.has_attr("class")
+                                   and tag.attrs['class'] == ["infobox-label"] and dn.decode_name(tag.text) == t)
         if th:
             res = dn.decode_name(th.next_sibling.text)
             pos = res.find(' ')
@@ -489,8 +538,8 @@ def studios(part: BeautifulSoup) -> list[str] | None:
     :param part: Часть страницы anime в WP (HTML-код).
     :return: Список студий anime в WP либо None.
     """
-    th = part.find(lambda tag: tag.name == "th" and tag.has_attr("class") and
-                               tag.attrs['class'] == ["infobox-label"] and tag.text == "Studio")
+    th = part.find(lambda tag: tag.name == "th" and tag.has_attr("class")
+                               and tag.attrs['class'] == ["infobox-label"] and tag.text == "Studio")
     if th:
         td = th.next_sibling
         ul = td.ul

@@ -34,15 +34,15 @@ def anime_pages(aid: int) -> dict[int, BeautifulSoup]:
     :param aid: ID anime в WA.
     :return: Словарь страниц в WA.
     """
-    print(f"- - wa.anime_pages({aid})")
+    print(f"wa.anime_pages({aid})")
     page = html(aid)
-    f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size") and
-                              tag.attrs['size'] == "2" and "Информация о серии" in tag.text)
+    f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size")
+                              and tag.attrs['size'] == "2" and "Информация о серии" in tag.text)
     if not f:
         return {aid: page}
     trs = f.find_next(
-        lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top" and
-                    tag.has_attr("width") and tag.attrs['width'] == "20" and ("#1" in tag.text or "#01" in tag.text)
+        lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
+                    and tag.has_attr("width") and tag.attrs['width'] == "20" and ("#1" in tag.text or "#01" in tag.text)
     ).parent.parent.contents
     res = {}
     for tr in trs:
@@ -77,7 +77,7 @@ def search_anime(search: str, year: int, form: str, pages: dict[int, BeautifulSo
     :param aids: Множество, список или кортеж ID уже найденных страниц anime.
     :return: Словарь страниц anime в WA либо None.
     """
-    print(f"- wa.search_anime('{search}', {year}, '{form if form else ''}')")
+    print(f"wa.search_anime('{search}', {year}, '{form if form else ''}')")
     search_ = points_codes(search)
     data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
                         params={'public_search': search_, 'global_sector': AN}).content
@@ -88,15 +88,15 @@ def search_anime(search: str, year: int, form: str, pages: dict[int, BeautifulSo
         aid = int(meta[meta.find("?id=") + 4:])
     else:
         ls = len(search_)
-        if a := data.find(lambda tag: tag.name == "a" and tag.has_attr("class") and
-                                      tag.attrs['class'] == ["review"] and search_ in tag.parent.text):
+        if a := data.find(lambda tag: tag.name == "a" and tag.has_attr("class")
+                                      and tag.attrs['class'] == ["review"] and search_ in tag.parent.text):
             trs = a.parent.parent.parent.contents
             if form:
                 for tr in trs:
                     td_text = "\n".join(tr.strings)
                     pos = td_text.find(search_)
-                    if ((td_text[pos + ls:pos + ls + 7] == "&nbsp;(" or td_text[pos + ls:pos + ls + 1] == "\n") and
-                            (td_text[pos - 1:pos] == "\n" or pos == 0)):
+                    if ((td_text[pos + ls:pos + ls + 7] == "&nbsp;(" or td_text[pos + ls:pos + ls + 1] == "\n")
+                            and (td_text[pos - 1:pos] == "\n" or pos == 0)):
                         pos1 = td_text.find(", Япония, ") + 10
                         pos2 = td_text.find(",", pos1)
                         if pos2 == -1:
@@ -139,13 +139,13 @@ def manga_pages(mid: int) -> dict[int, BeautifulSoup]:
     """
     print(f"- - wa.manga_pages({mid})")
     page = html(mid, True)
-    f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size") and
-                              tag.attrs['size'] == "2" and "Эта серия состоит из" in tag.text)
+    f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size")
+                              and tag.attrs['size'] == "2" and "Эта серия состоит из" in tag.text)
     if not f:
         return {mid: page}
     trs = f.find_next(
-        lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top" and
-                    ("#1" in tag.text or "#01" in tag.text)
+        lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
+                    and ("#1" in tag.text or "#01" in tag.text)
     ).parent.parent.contents
     res = {}
     for tr in trs:
@@ -166,7 +166,7 @@ def search_manga(search: str, year: int, pages: dict[int, BeautifulSoup] = {},
     :param mids: Множество, список или кортеж ID уже найденных страниц манги.
     :return: Словарь страниц манги в WA.
     """
-    print(f"- wa.search_manga('{search}', {year})")
+    print(f"wa.search_manga('{search}', {year})")
     search_ = points_codes(search)
     data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
                         params={'public_search': search_, 'global_sector': M}).content
@@ -177,19 +177,19 @@ def search_manga(search: str, year: int, pages: dict[int, BeautifulSoup] = {},
         mid = int(meta[meta.find("?id=") + 4:])
     else:
         ls = len(search_)
-        if a := data.find(lambda tag: tag.name == "a" and tag.has_attr("class") and
-                                      tag.attrs['class'] == ["review"] and search_ in tag.parent.text):
+        if a := data.find(lambda tag: tag.name == "a" and tag.has_attr("class")
+                                      and tag.attrs['class'] == ["review"] and search_ in tag.parent.text):
             trs = a.parent.parent.parent.contents
             for tr in trs:
                 td_text = "\n".join(tr.strings)
                 pos = td_text.find(search_)
-                if ((td_text[pos + ls:pos + ls + 7] == "&nbsp;(" or td_text[pos + ls:pos + ls + 1] == "\n") and
-                        (td_text[pos - 1:pos] == "\n" or pos == 0) and str(year) in tr.a.text[-5:-1]):
+                if ((td_text[pos + ls:pos + ls + 7] == "&nbsp;(" or td_text[pos + ls:pos + ls + 1] == "\n")
+                        and (td_text[pos - 1:pos] == "\n" or pos == 0) and str(year) in tr.a.text[-5:-1]):
                     mid = int(tr.a.attrs['href'].split("?id=")[1])
                     break
     if mid in pages or mid in mids:
         return
-    return manga_pages(mid)
+    return manga_pages(mid) if mid else None
 
 
 def manga_pages_from_anime(
@@ -212,22 +212,23 @@ def manga_pages_from_anime(
         if not wa_manga_pages:
             wa_manga_pages = {}
         wa_manga_pages[mid] = manga
-        if f := manga.find(lambda tag: tag.name == "font" and tag.has_attr("size") and tag.attrs['size'] == "2" and
-                                       "Эта серия состоит из" in tag.text):
+        if f := manga.find(lambda tag: tag.name == "font" and tag.has_attr("size") and tag.attrs['size'] == "2"
+                                       and "Эта серия состоит из" in tag.text):
             trs = f.find_next(
-                lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top" and (
-                        "#1" in tag.text or "#01" in tag.text)
+                lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
+                            and ("#1" in tag.text or "#01" in tag.text)
             ).parent.parent.contents
             for tr in trs:
-                nid = int(tr.contents[1].a.attrs['href'].split("?id=")[1])
+                a = tr.contents[1].a or tr.contents[2].a
+                nid = int(a.attrs['href'].split("?id=")[1])
                 if nid not in wa_manga_pages:
                     related_manga(nid)
 
-    print("- wa.manga_pages_from_anime(wa_manga_pages, wa_anime_pages)")
+    print("wa.manga_pages_from_anime(wa_manga_pages, wa_anime_pages)")
     rm = {}
     for aid, anime in wa_anime_pages.items():
-        td = anime.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                                    "Снято по манге" in tag.text)
+        td = anime.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                                    and "Снято по манге" in tag.text)
         if td:
             mid = int(td.next_sibling.next_sibling.a.attrs['href'].split("?id=")[1])
             if not wa_manga_pages or mid not in wa_manga_pages:
@@ -245,13 +246,13 @@ def related_anime(wa_anime_pages: dict[int, BeautifulSoup], aid: int) -> dict[in
     """
     anime = html(aid)
     wa_anime_pages[aid] = anime
-    f = anime.find(lambda tag: tag.name == "font" and tag.has_attr("size") and
-                               tag.attrs['size'] == "2" and "Информация о серии" in tag.text)
+    f = anime.find(lambda tag: tag.name == "font" and tag.has_attr("size")
+                               and tag.attrs['size'] == "2" and "Информация о серии" in tag.text)
     if not f:
         return wa_anime_pages
     trs = f.find_next(
-        lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top" and
-                    tag.has_attr("width") and tag.attrs['width'] == "20" and ("#1" in tag.text or "#01" in tag.text)
+        lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
+                    and tag.has_attr("width") and tag.attrs['width'] == "20" and ("#1" in tag.text or "#01" in tag.text)
     ).parent.parent.contents
     for tr in trs:
         nid = int(tr.contents[1].a.attrs['href'].split("?id=")[1])
@@ -266,13 +267,13 @@ def anime_id_from_manga(page: BeautifulSoup) -> list[int | None]:
     :param page: Страница манги (HTML-код) в WA.
     :return: Список ID anime в WA.
     """
-    f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size") and
-                              tag.attrs['size'] == "2" and "По этой манге снято аниме" in tag.text)
+    f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size")
+                              and tag.attrs['size'] == "2" and "По этой манге снято аниме" in tag.text)
     if not f:
         return []
     trs = f.find_next(
-        lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top" and
-                    ("#1" in tag.text or "#01" in tag.text)
+        lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
+                    and ("#1" in tag.text or "#01" in tag.text)
     ).parent.parent.contents
     return [int(tr.contents[2].a.attrs['href'].split("?id=")[1]) for tr in trs]
 
@@ -285,7 +286,7 @@ def anime_pages_from_manga(wa_anime_pages: dict[int, BeautifulSoup], wa_manga_pa
     :param wa_manga_pages: Словарь страниц манги в WA.
     :return: Обновлённый словарь страниц anime в WA.
     """
-    print("- wa.anime_pages_from_manga(wa_anime_pages, wa_manga_pages)")
+    print("wa.anime_pages_from_manga(wa_anime_pages, wa_manga_pages)")
     for manga in wa_manga_pages.values():
         aids = anime_id_from_manga(manga)
         if len(aids):
@@ -301,8 +302,8 @@ def ann_anime_id(wa_page: BeautifulSoup) -> int | None:
     :param wa_page: Страница anime (HTML-код) в WA.
     :return: ID anime в ANN, если найдена ссылка в WA. Иначе — None.
     """
-    td = wa_page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and
-                                  tag.attrs['class'] == ["bg2"] and "Сайты" in tag.text)
+    td = wa_page.find(lambda tag: tag.name == "td" and tag.has_attr("class")
+                                  and tag.attrs['class'] == ["bg2"] and "Сайты" in tag.text)
     ni = td.parent.parent.find_next_sibling("noindex")
     if a := ni.find_next(lambda tag: tag.name == "a" and f"{SANNE}{A}.php" in tag.attrs['href']):
         return int(a.attrs['href'].split("?id=")[1])
@@ -314,23 +315,36 @@ def ann_manga_id(wa_page: BeautifulSoup) -> int | None:
     :param wa_page: Страница манги (HTML-код) в WA.
     :return: ID манги в ANN, если найдена ссылка в WA. Иначе — None.
     """
-    if td := wa_page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and
-                                      tag.attrs['class'] == ["review"] and "Сайты" in tag.text):
+    if td := wa_page.find(lambda tag: tag.name == "td" and tag.has_attr("class")
+                                      and tag.attrs['class'] == ["review"] and "Сайты" in tag.text):
         a = td.next_sibling.next_sibling.find_next(lambda tag: tag.name == "a" and tag.text == "ann")
         return int(a.attrs['href'].split("?id=")[1]) if a else None
 
 
-def wp_title(wa_page: BeautifulSoup) -> str | None:
+def wp_anime_title(wa_page: BeautifulSoup) -> str | None:
     """
-    Извлечение заголовка в WP по ссылке в WA.
+    Извлечение заголовка anime в WP по ссылке в WA.
     :param wa_page: Страница (HTML-код) в WA.
     :return: Заголовок в WP, если найдена ссылка в WA. Иначе — None.
     """
-    td = wa_page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and
-                                  tag.attrs['class'] == ["bg2"] and "Википедия" in tag.text)
-    ni = td.parent.parent.find_next_sibling("noindex")
-    url = ni.a.attrs['href']
-    return unquote(url[url.find("/wiki/") + 6:])
+    if td := wa_page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["bg2"]
+                                      and "Википедия" in tag.text):
+        ni = td.parent.parent.find_next_sibling("noindex")
+        url = ni.a.attrs['href']
+        return unquote(url[url.find("/wiki/") + 6:])
+
+
+def wp_manga_title(wa_page: BeautifulSoup) -> str | None:
+    """
+    Извлечение заголовка манги в WP по ссылке в WA.
+    :param wa_page: Страница (HTML-код) в WA.
+    :return: Заголовок в WP, если найдена ссылка в WA. Иначе — None.
+    """
+    td = wa_page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                                  and "Вики" in tag.text).next_sibling.next_sibling.contents
+    for a in td:
+        if isinstance(a, Tag) and a.has_attr("href") and a.text == "вики (en)":
+            return unquote(a.attrs['href'][a.attrs['href'].find("/wiki/") + 6:])
 
 
 # def mu_manga_id(wa_page: BeautifulSoup) -> int | None:
@@ -371,8 +385,11 @@ def title_rom(page: BeautifulSoup, am: bool = False) -> str:
     :param am: Переключатель: anime/манга (False/True).
     :return: Ромадзи наименование в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               f"Названи{"я" if am else "е"} (ромадзи)" in tag.text)
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and f"Названи{"я" if am else "е"} (ромадзи)" in tag.text)
+    if not td:
+        td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                                   and "Названия (яп.)" in tag.text)
     if td:
         td = td.next_sibling.next_sibling
     else:
@@ -397,10 +414,29 @@ def title_orig(page: BeautifulSoup, am: bool = False) -> str:
     :param am: Переключатель: anime/манга (False/True).
     :return: Оригинальное наименование в WA.
     """
-    if td := page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and (
-            f"Названи{"я" if am else "е"} (кандзи)" in tag.text or "Названия (прочие)" in tag.text or
-            "Названия (яп.)" in tag.text)):
-        return td.next_sibling.next_sibling.text
+    if tds := page.find_all(
+        lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                    and (f"Названи{"я" if am else "е"} (кандзи)" in tag.text or "Названия (прочие)" in tag.text
+                         or "Названия (яп.)" in tag.text)
+    ):
+        if len(tds) == 1:
+            return tds[0].next_sibling.next_sibling.text
+        titles = []
+        text = f"\n0. *** Подходящего варианта нет ***"
+        for i, td in enumerate(tds):
+            title = td.next_sibling.next_sibling.text
+            titles.append(title)
+            text += f"\n{i + 1}. {title}"
+        print(f"Выберите оригинальное наименование манги:{text}")
+        while True:
+            num = input("Укажите номер: ")
+            if num.isdigit():
+                num = int(num)
+                break
+            print("Ошибка! Требуется ввести целое число.")
+        if not num:
+            return ""
+        return titles[num - 1]
 
 
 def manga_title_r(func, *args) -> str:
@@ -421,8 +457,8 @@ def title_eng(page: BeautifulSoup, am: bool = False) -> str | None:
     :param am: Переключатель: anime/манга (False/True).
     :return: Английское наименование в WA.
     """
-    if td := page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                                   f"Названи{"я" if am else "е"} (англ.)" in tag.text):
+    if td := page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                                   and f"Названи{"я" if am else "е"} (англ.)" in tag.text):
         return td.next_sibling.next_sibling.text.replace(' - ', ' — ').replace('...', '…')
 
 
@@ -435,11 +471,11 @@ def people(pid: int) -> dict[str, str]:
     page = html(pid, url=f"{WA}people.php")
     f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size") and tag.attrs['size'] == "5").text
     res = {'name_rus': f}
-    f = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                              "Имя по-английски" in tag.text).next_sibling.next_sibling.text
+    f = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                              and "Имя по-английски" in tag.text).next_sibling.next_sibling.text
     res['name_rom'] = f
-    f = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                              "Оригинальное имя" in tag.text)
+    f = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                              and "Оригинальное имя" in tag.text)
     res['name_orig'] = f.next_sibling.next_sibling.text if f else res['name_rom']
     return res
 
@@ -450,8 +486,8 @@ def authors(page: BeautifulSoup) -> dict[int, dict[str, str]]:
     :param page: Страница (HTML-код) в WA.
     :return: Словарь авторов — словарей имён авторов (персон) в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               "Авторы" in tag.text).next_sibling.next_sibling.contents
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and "Авторы" in tag.text).next_sibling.next_sibling.contents
     res = {}
     for a in td:
         if isinstance(a, Tag) and a.has_attr("href"):
@@ -467,8 +503,8 @@ def manga_date_of_premiere(page: BeautifulSoup, full_format: bool = True) -> str
     :param full_format: Флаг полного формата даты (гггг.мм.дд). Если False, то только год (гггг).
     :return: Дата премьеры манги в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               "Год выпуска" in tag.text).next_sibling.next_sibling
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and "Год выпуска" in tag.text).next_sibling.next_sibling
     return td.text + ("-12-31" if full_format else "")
 
 
@@ -478,18 +514,22 @@ def publications(page: BeautifulSoup) -> dict[int, dict[str, str]]:
     :param page: Страница (HTML-код) в WA.
     :return: Словарь изданий в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               "Сериализация" in tag.text).next_sibling.next_sibling.contents
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and "Сериализация" in tag.text).next_sibling.next_sibling.contents
     res = {}
     for a in td:
         if isinstance(a, Tag) and a.has_attr("href"):
             id_ = int(a.attrs['href'].split("?id=")[1])
             page_ = html(id_, url=f"{WA}company.php")
-            c = page_.find(lambda tag: tag.name == "a" and tag.has_attr("href") and
-                                       "company.php" in tag.attrs['href']).text
+            c = page_.find(lambda tag: tag.name == "a" and tag.has_attr("href")
+                                       and "company.php" in tag.attrs['href']).text
             if c == "Morning":
                 c = "Shuukan Morning"
+            elif c == "Kadokawa":
+                c = "Kadokawa Shoten"
             res[id_] = {'publication': a.text, 'publishing': c}
+            if res[id_]['publishing'] == "Futabasha" and res[id_]['publication'] == "Manga Action":
+                res[id_]['publication'] = "Shuukan Manga Action"
     return res
 
 
@@ -499,8 +539,8 @@ def genres(page: BeautifulSoup) -> list[str]:
     :param page: Страница (HTML-код) в WA.
     :return: Список жанров в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               "Жанр" in tag.text).next_sibling.next_sibling.contents
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and "Жанр" in tag.text).next_sibling.next_sibling.contents
     return [a.text for a in td if isinstance(a, Tag) and a.has_attr("href") and a.text not in IGNORED_GENRES]
 
 
@@ -529,7 +569,7 @@ def extraction_manga(page: BeautifulSoup) -> dict[str, str | dict[int, dict[str,
         'name_rus': str,
         'author_of_manga': dict[int, dict[str, str]],
         'date_of_premiere': str,
-        'publication': dict[int, dict[str, str]],
+        'publications': dict[int, dict[str, str]],
         'genre': list[str],
         'poster': str,
         'ann': int
@@ -543,7 +583,7 @@ def extraction_manga(page: BeautifulSoup) -> dict[str, str | dict[int, dict[str,
         'name_rus': manga_title_r(title_rus, page),
         'author_of_manga': authors(page),
         'date_of_premiere': manga_date_of_premiere(page),
-        'publication': publications(page),
+        'publications': publications(page),
         'genre': genres(page),
         'poster': poster(page, True),
         'ann': ann_manga_id(page)
@@ -565,8 +605,8 @@ def anime_format(page: BeautifulSoup) -> str | None:
     :param page: Страница (HTML-код) в WA.
     :return: Формат anime в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               "Тип" in tag.text)
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and "Тип" in tag.text)
     if td:
         td = td.next_sibling.next_sibling.text
         pos = td.find(" (")
@@ -581,8 +621,8 @@ def number_of_episodes(page: BeautifulSoup) -> int:
     :param page: Страница (HTML-код) в WA.
     :return: Количество эпизодов в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               "Тип" in tag.text)
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and "Тип" in tag.text)
     if td:
         td = td.next_sibling.next_sibling.text
         pos = td.find(" (") + 2
@@ -598,8 +638,8 @@ def duration(page: BeautifulSoup) -> str | None:
     :param page: Страница (HTML-код) в WA.
     :return: Продолжительность эпизода в формате чч:мм в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               "Тип" in tag.text)
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and "Тип" in tag.text)
     if td:
         td = td.next_sibling.next_sibling.text
         pos = td.find("), ") + 3
@@ -615,8 +655,8 @@ def anime_date_of_premiere(page: BeautifulSoup) -> str | None:
     :param page: Страница (HTML-код) в WA.
     :return: Дата премьеры anime в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               ("Выпуск" in tag.text or "Премьера" in tag.text))
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and ("Выпуск" in tag.text or "Премьера" in tag.text))
     if td:
         a = td.next_sibling.next_sibling.a
         res = ""
@@ -632,9 +672,9 @@ def studios(page: BeautifulSoup) -> list[str] | None:
     :param page: Страница (HTML-код) в WA.
     :return: Список наименований студий в WA. None — если нет информации о студиях.
     """
-    if (page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["bg2"] and
-                              "Основное" in tag.text) and
-            (a := page.find(lambda tag: tag.name == "a" and "компании" in tag.text))):
+    if (page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["bg2"]
+                              and "Основное" in tag.text)
+            and (a := page.find(lambda tag: tag.name == "a" and "компании" in tag.text))):
         a = a.attrs['href'].split("?id=")
         page = html(int(a[1]), url=a[0])
         if f := page.find(lambda tag: tag.name == "font" and "Производство:" in tag.text):
@@ -648,21 +688,24 @@ def directors(page: BeautifulSoup) -> list[dict[str, str]] | None:
     :param page: Страница (HTML-код) в WA.
     :return: Список словарей режиссёров в WA. None — если нет информации о режиссёрах.
     """
-    if (page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["bg2"] and
-                              "Основное" in tag.text) and
-            (a := page.find(lambda tag: tag.name == "a" and "авторы" in tag.text))):
+    if (page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["bg2"]
+                              and "Основное" in tag.text)
+            and (a := page.find(lambda tag: tag.name == "a" and "авторы" in tag.text))):
         a = a.attrs['href'].split("?id=")
         page = html(int(a[1]), url=a[0])
         if f := page.find(lambda tag: tag.name == "font" and "Режиссер:" in tag.text):
             trs = f.parent.parent.parent.contents
             res = []
+            d1 = False
             for tr in range(len(trs)):
                 if tr:
                     tds = trs[tr].contents
                     if len(tds) > 2 and not tds[2].td:
-                        break
+                        d1 = True
                     a = tds[1].a.attrs['href'].split("?id=")
                     res.append(people(int(a[1])))
+                    if d1:
+                        break
             return res
 
 
@@ -672,8 +715,8 @@ def notes(page: BeautifulSoup) -> str:
     :param page: Страница (HTML-код) в WA.
     :return: Примечания в WA.
     """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"] and
-                               "Тип" in tag.text)
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and "Тип" in tag.text)
     if td:
         td = td.next_sibling.next_sibling.text
         pos = td.find(" (") + 2
@@ -753,8 +796,8 @@ def search_people(name_rom: str) -> dict[str, str] | None:
         pid = int(meta[meta.find("?id=") + 4:])
         return people(pid)
     else:
-        trs = page.find(lambda tag: tag.name == "a" and tag.has_attr("href") and
-                                    "people.php?id=" in tag.attrs['href']).parent.parent.parent.contents
+        trs = page.find(lambda tag: tag.name == "a" and tag.has_attr("href")
+                                    and "people.php?id=" in tag.attrs['href']).parent.parent.parent.contents
         for tr in trs:
             p = people(int(tr.a.attrs['href'].split("?id=")[1]))
             if p['name_rom'] == name_rom:

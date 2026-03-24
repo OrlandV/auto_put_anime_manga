@@ -1,5 +1,3 @@
-from config import WINDOWS_VER, FIREFOX_VER
-
 A = 'anime'
 M = 'manga'
 
@@ -23,6 +21,3 @@ AMU = 'https://api.mangaupdates.com/v1/'
 AMUS = AMU + 'series/'
 AMUA = AMU + 'authors/'
 WMU = 'http://www.mangaupdates.com/series.html'
-
-USER_AGENT = (f'Mozilla/5.0 (Windows NT {WINDOWS_VER}.0; Win64; x64; rv:{FIREFOX_VER}) '
-              f'Gecko/20100101 Firefox/{FIREFOX_VER}')

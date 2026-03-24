@@ -19,7 +19,7 @@ def xml(id_: int) -> et.Element | None:
     :param id_: ID манги или anime.
     :return: XML-страница манги или anime в ANN.
     """
-    print(f"- - ann.xml({id_})")
+    print(f"ann.xml({id_})")
     return et.fromstring(anti_bot("ANN", f"{CANNE}api.xml?title={id_}", "xml"))
 
 
@@ -96,7 +96,8 @@ def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element]
             id_ = int(rel.attrib['id'])
             if id_ in mangas or id_ in mangas_ or id_ in animes or id_ in animes_:
                 continue
-            if "adapt" in rel.attrib['rel'] and id_ not in mangas and id_ not in mangas_:
+            if (("adapt" in rel.attrib['rel'] or "alternate" in rel.attrib['rel'])
+                    and id_ not in mangas and id_ not in mangas_):
                 manga = xml(id_)
                 if manga.find("manga") is not None:
                     rm[aid] = id_
@@ -120,16 +121,17 @@ def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element]
             if rel.attrib['rel'] == "serialized in":
                 continue
             id_ = int(rel.attrib['id'])
-            if rel.attrib['rel'] in ("adaptation", "adapted") and id_ not in animes_:
-                anime = xml(id_)
-                if anime.find("anime") is not None:
-                    animes_[id_] = anime
-                    apages(anime, id_)
+            if rel.attrib['rel'] in ("adaptation", "adapted") or "alternate" in rel.attrib['rel']:
+                if id_ not in animes_:
+                    anime = xml(id_)
+                    if anime.find("anime") is not None:
+                        animes_[id_] = anime
+                        apages(anime, id_)
             elif id_ not in mangas and id_ not in mangas_:
                 mangas_[id_] = xml(id_)
                 mpages(mangas_[id_])
 
-    print(f"- - ann.pages(animes, mangas)")
+    print(f"ann.pages(animes, mangas)")
     animes_ = {}
     mangas_ = {}
     rm = {}
@@ -157,7 +159,9 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
         Извлечение ID, фрагмента HTML текста строки и нормализованного наименования из поискового ответа ANN.
         :return: Кортеж: ID, нормализованное наименование.
         """
-        return int(a.attrs['href'].split("?id=")[1]), dn.normal_name(a.text[:a.text.find(" (")])
+        pe = a.text.find(" (")
+        t = a.text if pe < 0 else a.text[:pe]
+        return int(a.attrs['href'].split("?id=")[1]), dn.normal_name(t)
 
     def val_year(_am: bool = False) -> bool:
         """
@@ -168,7 +172,7 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
         y = manga_date_of_premiere(page) if _am else anime_date_of_premiere(page)
         return int(y[:4]) == year if y else False
 
-    print(f"- ann.search_pages('{search}', {year}, '{form}')")
+    print(f"ann.search_pages('{search}', {year}, '{form}')")
     search_ = dn.normal_name(search)
     data = html("search/name", {'q': search_}, False)
     animes = {}
@@ -247,21 +251,27 @@ def number_of_volumes(ann_xml: et.Element) -> int | None:
         return int(info.text)
 
 
-def publication(ann_xml: et.Element) -> dict[int, dict[str, str]] | None:
+def publications(ann_xml: et.Element) -> dict[int, dict[str, str]] | None:
     """
     Извлечение издания манги из XML-страницы в ANN.
     :param ann_xml: XML-страница в ANN.
     :return: Словарь словарей {ID: {издание, издательство}} или None.
     """
-    def publishing() -> str | None:
+    def publishing(f_id: bool = False) -> str | tuple[str, int] | None:
         """
         Извлечение наименования издательства.
-        :return: Наименование издательства или None.
+        :param f_id: Флаг возвращения ID издательства.
+        :return: Наименование издательства и его ID (опционо) или None.
         """
+        nonlocal m_html
+        if not m_html:
+            m_html = html(M, {'id': ann_xml[0].attrib['id']})
         b = m_html.find(lambda tag: tag.name == "table" and tag.has_attr("id") and tag.attrs['id'] == "credits")
         if b := b.find_next(lambda tag: tag.name == "b" and "Publisher" in tag.text):
-            return b.parent.a.text
+            a = b.parent.a
+            return (a.text, int(a.attrs['href'].split("?id=")[1])) if f_id else a.text
 
+    m_html = None
     if (rel := ann_xml[0].find("././related-prev[@rel='serialized in']")) is not None:
         id_ = int(rel.attrib['id'])
         m_html = html(M, {'id': id_})
@@ -278,8 +288,15 @@ def publication(ann_xml: et.Element) -> dict[int, dict[str, str]] | None:
             'publishing': publishing(),
             'type': 1
         }}
-    elif publishing_ := publishing():
-        return {0: {'publication': f'? ({publishing_})', 'publishing': publishing_, 'type': 2}}
+    elif (info := ann_xml[0].find("././info[@type='Vintage']")) is not None:
+        publication_ = info.text[info.text.find("serialized in ") + 14:info.text.find(")")]
+        if publication_:
+            if "<i>" in publication_:
+                publication_ = publication_[3:publication_.find("</i>")]
+            publishing_, id_ = publishing(True)
+            return {id_: {'publication': publication_, 'publishing': publishing_, 'type': 1}}
+        elif publishing_ := publishing():
+            return {0: {'publication': f'? ({publishing_})', 'publishing': publishing_, 'type': 2}}
 
 
 def genres(ann_xml: et.Element) -> list[str]:
@@ -331,7 +348,7 @@ def extraction_manga(
         'author_of_manga': authors(ann_xml, True),
         'number_of_volumes': number_of_volumes(ann_xml),
         'date_of_premiere': manga_date_of_premiere(ann_xml),
-        'publication': publication(ann_xml),
+        'publications': publications(ann_xml),
         'genre': genres(ann_xml),
         'poster': poster(ann_xml)
     }
@@ -357,7 +374,10 @@ def number_of_episodes(ann_xml: et.Element) -> int:
     :return: Количество эпизодов anime в ANN.
     """
     if (info := ann_xml[0].find("././info[@type='Number of episodes']")) is not None:
-        return int(info.text)
+        res = info.text
+        if " " in res:
+            res = res[:res.find(" ")]
+        return int(res)
     return 1
 
 

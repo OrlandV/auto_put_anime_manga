@@ -1,31 +1,12 @@
 # COOKIE авторизации на World Art.
 COOKIES_WA = {'user_login': '', 'user_password': ''}
 
-# COOKIE Wikipedia.
-COOKIES_WP = {
-    'WMF-Last-Access-Global': "",
-    'WMF-Uniq': "",
-    'GeoIP': "",
-    'WMF-Last-Access': "",
-    'VEECid': "",
-    'enwikimwclientpreferences': "",
-    'enwikimwuser-sessionId': "",
-    'WMF-DP': "",
-    'NetworkProbeLimit': ""
-}
-
 # Параметры подключения к БД.
 # DB_CONNECT = ("Сервер", "логин", "пароль", "БД")
 DB_CONNECT = ("localhost", "", "", "anime_manga")
 
 # Путь хранения микропостеров. Например: 'C:/LOCALHOST/anime_manga/microposter/'.
 PATH = ''
-
-# Версия операционной системы Windows ('10' или '11').
-WINDOWS_VER = '11'
-
-# Версия браузера Mozilla Firefox для User-Agent (рекомендуется к актуализации).
-FIREFOX_VER = '147.0'
 
 # WA-форматы anime в ANN.
 FORM_ANN = {

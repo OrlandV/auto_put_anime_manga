@@ -53,20 +53,20 @@ def wp_pages_in_wa(search: str) -> dict[str, BeautifulSoup]:
     :return: Словарь {WP_title: HTML} HTML-страниц из WP.
     """
     def proc():
-        nonlocal _wp_pages
-        wp_title = wa.wp_title(page)
-        if wp_title:
-            wp_title = wp_title.replace('_', ' ')
-            if wp_title not in _wp_pages:
-                _wp_pages = wp.search_pages(wp_title, _wp_pages)
+        nonlocal _wp_pages, wp_title
+        wp_title = wp_title.replace('_', ' ')
+        if wp_title not in _wp_pages:
+            _wp_pages = wp.search_pages(wp_title, _wp_pages)
 
     _wp_pages = wp.search_pages(normal_name(search))
     if wa_anime_pages:
         for page in wa_anime_pages.values():
-            proc()
+            if wp_title := wa.wp_anime_title(page):
+                proc()
     if wa_manga_pages:
         for page in wa_manga_pages.values():
-            proc()
+            if wp_title := wa.wp_manga_title(page):
+                proc()
     return _wp_pages
 
 
@@ -147,9 +147,9 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
         """
         for aut in _aut:
             for a in mdata['author_of_manga']:
-                if (aut['name_rom'] == a['name_rom'] or
-                        ('name_orig' in aut and 'name_orig' in a and
-                         aut['name_orig'] == a['name_orig'].replace(' ', ''))):
+                if (aut['name_rom'] == a['name_rom']
+                        or ('name_orig' in aut and 'name_orig' in a
+                            and aut['name_orig'].replace(' ', '') == a['name_orig'].replace(' ', ''))):
                     return True
         return False
 
@@ -163,18 +163,19 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             md = int(mdata['date_of_premiere'][:4])
             for wpt, wpdata in wp_data[M].items():
                 wpd = int(wpdata['date_of_premiere'][:4])
-                if (((mdata['date_of_premiere'] == wpdata['date_of_premiere'] and
-                      wpdata['date_of_premiere'][5:] != "12-31") or
-                     (wpdata['date_of_premiere'][5:] == "12-31" and (wpd == md or (_i and wpd == md + _i))) or
-                     (normal_name(mdata['name_rom']) in (normal_name(wpdata['name_eng']), normal_name(wpt)) or
-                      (mdata['name_eng'] and
-                       normal_name(mdata['name_eng']) in (normal_name(wpdata['name_eng']), normal_name(wpt)))))
+                if (((mdata['date_of_premiere'] == wpdata['date_of_premiere']
+                      and wpdata['date_of_premiere'][5:] != "12-31")
+                     or (wpdata['date_of_premiere'][5:] == "12-31" and (wpd == md or (_i and wpd == md + _i)))
+                     or (normal_name(mdata['name_rom']) in (normal_name(wpdata['name_eng']), normal_name(wpt))
+                         or (mdata['name_eng']
+                             and normal_name(mdata['name_eng']) in (normal_name(wpdata['name_eng']),
+                                                                    normal_name(wpt)))))
                         and maut(wpdata['author_of_manga'])):
                     for tit in ('number_of_volumes', 'number_of_chapters'):
                         if (tit not in mdata or not mdata[tit]) and wpdata[tit]:
                             mdata[tit] = wpdata[tit]
-                    if not len(mdata['publication']):
-                        mdata['publication'] = wpdata['publication']
+                    if not len(mdata['publications']):
+                        mdata['publications'] = wpdata['publications']
                     ids[M]['WP'].append(wpt)
                     break
 
@@ -188,11 +189,11 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
     #         md = int(mdata['date_of_premiere'][:4])
     #         for muid, mudata in mu_data.items():
     #             mud = int(mudata['date_of_premiere'][:4])
-    #             if (((mdata['date_of_premiere'] == mudata['date_of_premiere'] and
-    #                   mudata['date_of_premiere'][5:] != "12-31") or
-    #                  (mudata['date_of_premiere'][5:] == "12-31" and (mud == md or (_i and mud == md + _i))) or
-    #                  (mdata['name_eng'] and normal_name(mdata['name_eng']) == normal_name(mudata['name_eng']))) and
-    #                     maut(list(mudata['author_of_manga'].values()))):
+    #             if (((mdata['date_of_premiere'] == mudata['date_of_premiere']
+    #                   and mudata['date_of_premiere'][5:] != "12-31")
+    #                  or (mudata['date_of_premiere'][5:] == "12-31" and (mud == md or (_i and mud == md + _i)))
+    #                  or (mdata['name_eng'] and normal_name(mdata['name_eng']) == normal_name(mudata['name_eng'])))
+    #                     and maut(list(mudata['author_of_manga'].values()))):
     #                 for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus',
     #                             'number_of_volumes', 'number_of_chapters', 'poster'):
     #                     if (tit not in mdata or not mdata[tit]) and mudata[tit]:
@@ -201,8 +202,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
     #                         mdata[tit] = 1
     #                 for aut in mudata['author_of_manga'].values():
     #                     for ma in mdata['author_of_manga']:
-    #                         if (('name_orig' not in ma or not ma['name_orig']) and 'name_orig' in aut and
-    #                                 aut['name_orig'] and aut['name_rom'] == ma['name_rom']):
+    #                         if (('name_orig' not in ma or not ma['name_orig']) and 'name_orig' in aut
+    #                                 and aut['name_orig'] and aut['name_rom'] == ma['name_rom']):
     #                             ma['name_orig'] = aut['name_orig']
     #                             break
     #                 if not len(mdata['publication']):
@@ -230,9 +231,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                     for d in wpdata['director']:
                         for ad in adata['director']:
                             qd = False
-                            if (d['name_rom'] == ad['name_rom'] or
-                                    ('name_orig' in d and
-                                     d['name_orig'].replace(' ', '') == ad['name_orig'])):
+                            if (d['name_rom'] == ad['name_rom']
+                                    or ('name_orig' in d and d['name_orig'].replace(' ', '') == ad['name_orig'])):
                                 q = True
                                 break
                             q = False
@@ -242,9 +242,9 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                         if 0.85 * am > m:
                             c = True
                 nwpt = normal_name(wpt)
-                if q or qd or (((adata['name_eng'] and nwpt == normal_name(adata['name_eng'])) or
-                                nwpt == normal_name(adata['name_rom'])) and
-                               wpdata['date_of_premiere'][:4] == adata['date_of_premiere'][:4]):
+                if q or qd or (((adata['name_eng'] and nwpt == normal_name(adata['name_eng']))
+                                or nwpt == normal_name(adata['name_rom']))
+                               and wpdata['date_of_premiere'][:4] == adata['date_of_premiere'][:4]):
                     for tit in ('name_eng', 'number_of_episodes', 'date_of_premiere'):
                         if not adata[tit] and wpdata[tit]:
                             adata[tit] = wpdata[tit]
@@ -254,8 +254,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                     for d in wpdata['director']:
                         qd = True
                         for ad in adata['director']:
-                            if (d['name_rom'] in ad['name_rom'] or
-                                    ('name_orig' in d and d['name_orig'].replace(' ', '') in ad['name_orig'])):
+                            if (d['name_rom'] in ad['name_rom']
+                                    or ('name_orig' in d and d['name_orig'].replace(' ', '') in ad['name_orig'])):
                                 qd = False
                                 break
                         if qd:
@@ -293,10 +293,10 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
     if M in wa_data:
         for waid, wadata in wa_data[M].items():
             mdata = {'wa_id': waid, 'author_of_manga': [], 'number_of_volumes': None, 'number_of_chapters': None,
-                     'publication': [], 'poster': wadata['poster']}
+                     'publications': [], 'poster': wadata['poster']}
             for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'date_of_premiere'):
                 mdata[tit] = wadata[tit] if wadata[tit] else None
-            for tit in ('author_of_manga', 'publication'):
+            for tit in ('author_of_manga', 'publications'):
                 if len(wadata[tit]):
                     for ap in wadata[tit].values():
                         mdata[tit].append(ap)
@@ -307,13 +307,16 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 for annid, anndata in ann_data[M].items():
                     annd = int(anndata['date_of_premiere'][:4])
                     if int(annid) == wadata['ann'] or (
-                            (annd == md or annd == md + 1) and anndata['name_rom'] and
-                            normal_name(anndata['name_rom']).
-                                    replace("ou", "o") == normal_name(mdata['name_rom']).replace("ou", "o") and
-                            maut(anndata['author_of_manga'])):
+                            (annd == md or annd == md + 1) and anndata['name_rom']
+                            and normal_name(anndata['name_rom'].lower().replace("-hen", " hen").replace("-", ""))
+                                    .replace("ou", "o") == normal_name(mdata['name_rom'].lower().replace("-hen", " hen")
+                                                                       .replace("-", "")).replace("ou", "o")
+                            and maut(anndata['author_of_manga'])):
                         for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'number_of_volumes', 'poster'):
                             if not mdata[tit] and anndata[tit]:
                                 mdata[tit] = anndata[tit]
+                        if annd == md and mdata['date_of_premiere'] != anndata['date_of_premiere']:
+                            mdata['date_of_premiere'] = anndata['date_of_premiere']
                         mdata['ann_id'] = annid
                         ids[M]['ANN'].append(annid)
                         break
@@ -332,10 +335,10 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 mdata[tit] = anndata[tit] if tit in anndata and anndata[tit] else None
             for tit in ('author_of_manga', 'genre'):
                 mdata[tit] = anndata[tit] if tit in anndata and len(anndata[tit]) else []
-            if len(anndata['publication']):
-                mdata['publication'] = []
-                for ap in anndata['publication'].values():
-                    mdata['publication'].append(ap)
+            if len(anndata['publications']):
+                mdata['publications'] = []
+                for ap in anndata['publications'].values():
+                    mdata['publications'].append(ap)
             ids[M]['ANN'].append(annid)
             mwp(1)
             # mmu(1)
@@ -355,13 +358,13 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 'number_of_volumes': wpdata['number_of_volumes'] if wpdata['number_of_volumes'] else None,
                 'number_of_chapters': wpdata['number_of_chapters'] if wpdata['number_of_chapters'] else None,
                 'date_of_premiere': wpdata['date_of_premiere'] if wpdata['date_of_premiere'] else None,
-                'publication': wpdata['publication'],
+                'publications': wpdata['publications'],
                 'genre': []
             }
-            ip = len(mdata['publication'])
+            ip = len(mdata['publications'])
             for i in range(ip):
-                if not mdata['publication'][ip - i - 1]['publication']:
-                    mdata['publication'].pop(ip - i - 1)
+                if not mdata['publications'][ip - i - 1]['publication']:
+                    mdata['publications'].pop(ip - i - 1)
             # mmu()
             for tit in ('name_orig', 'name_rom'):
                 if not mdata[tit] and mdata['name_eng']:
@@ -420,21 +423,22 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 q = qd = qid = False
                 if int(annid) == wadata['ann']:
                     qid = True
-                if not qid and (((anndata['date_of_premiere'][5:] != "12-31" and
-                                  anndata['date_of_premiere'] == adata['date_of_premiere']) or
-                                 (anndata['date_of_premiere'][5:] == "12-31" and
-                                  anndata['date_of_premiere'][:4] == adata['date_of_premiere'][:4])) and
-                                ((anndata['name_rom'] and normal_name(anndata['name_rom']).
-                                        replace("ou", "o") == normal_name(adata['name_rom']).replace("ou", "o")) or
-                                 (anndata['name_eng'] and adata['name_eng'] and normal_name(anndata['name_eng']).
-                                         replace("ou", "o") == normal_name(adata['name_eng']).replace("ou", "o"))) and
-                                maut(anndata['author_of_manga'])):
+                if not qid and (((anndata['date_of_premiere'][5:] != "12-31"
+                                  and anndata['date_of_premiere'] == adata['date_of_premiere'])
+                                 or (anndata['date_of_premiere'][5:] == "12-31"
+                                     and anndata['date_of_premiere'][:4] == adata['date_of_premiere'][:4]))
+                                and ((anndata['name_rom'] and normal_name(anndata['name_rom'].replace("-", ""))
+                                .replace("ou", "o") == normal_name(adata['name_rom'].replace("-", ""))
+                                .replace("ou", "o"))
+                                     or (anndata['name_eng'] and adata['name_eng'] and normal_name(anndata['name_eng'])
+                                        .replace("ou", "o") == normal_name(adata['name_eng']).replace("ou", "o")))
+                                and maut(anndata['author_of_manga'])):
                     qd = True
                     for d in anndata['director']:
                         for ad in adata['director']:
                             qd = False
-                            if (d['name_rom'] == ad['name_rom'] or
-                                    ('name_orig' in d and d['name_orig'].replace(' ', '') == ad['name_orig'])):
+                            if (d['name_rom'] == ad['name_rom']
+                                    or ('name_orig' in d and d['name_orig'].replace(' ', '') == ad['name_orig'])):
                                 q = True
                                 break
                             q = False
@@ -449,8 +453,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                     for d in anndata['director']:
                         qd = True
                         for ad in adata['director']:
-                            if (d['name_rom'] == ad['name_rom'] or
-                                    ('name_orig' in d and d['name_orig'].replace(' ', '') == ad['name_orig'])):
+                            if (d['name_rom'] == ad['name_rom']
+                                    or ('name_orig' in d and d['name_orig'].replace(' ', '') == ad['name_orig'])):
                                 qd = False
                                 break
                         if qd:
@@ -555,32 +559,29 @@ def control(_data: dict[str, list[dict[str, str | list[dict[str, str]] | int | l
 
 if __name__ == '__main__':
     # Поиск и сбор страниц
-    print("wa.search_anime(title, year, form) if A_M == A")
     wa_anime_pages = wa.search_anime(title, year, form) if A_M == A else None
-    print("wa.search_manga(title, year) if A_M == M")
     wa_manga_pages = wa.search_manga(title, year) if A_M == M else None
-    print("ann.search_pages(title, year, form)")
+    wa_rm = {}
+    if wa_anime_pages and len(wa_anime_pages):
+        wa_manga_pages, wa_rm = wa.manga_pages_from_anime(wa_manga_pages, wa_anime_pages)
+    if wa_manga_pages and len(wa_manga_pages):
+        wa_anime_pages = wa.anime_pages_from_manga(wa_anime_pages, wa_manga_pages)
+
+    print(f"ann.search_pages('{title}', {year}, '{form}')")
     ann_anime_pages, ann_manga_pages, ann_rm = ann.search_pages(title, year, form)
+    print("ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages, wa_manga_pages)")
+    ann_anime_pages, ann_manga_pages, ann_rm = ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages,
+                                                               wa_manga_pages)
+
     # print("mu.search_pages(title, year) if A_M == M")
     # mu_pages = mu.search_pages(title, year) if A_M == M else None
     # if not mu_pages:
     #     print("mu.search_pages(title)")
     #     mu_pages = mu.search_pages(title)
-    wa_rm = {}
-    if wa_anime_pages and len(wa_anime_pages):
-        print("wa.manga_pages_from_anime(wa_manga_pages, wa_anime_pages)")
-        wa_manga_pages, wa_rm = wa.manga_pages_from_anime(wa_manga_pages, wa_anime_pages)
-    if wa_manga_pages and len(wa_manga_pages):
-        print("wa.anime_pages_from_manga(wa_anime_pages, wa_manga_pages)")
-        wa_anime_pages = wa.anime_pages_from_manga(wa_anime_pages, wa_manga_pages)
-    print("ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages, wa_manga_pages)")
-    ann_anime_pages, ann_manga_pages, ann_rm = ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages,
-                                                               wa_manga_pages)
+
     print(f"wp_pages_in_wa('{title}')")
     wp_pages = wp_pages_in_wa(title)
-    print("wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))")
     wp_page_parts = wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))
-
     if not len(wp_page_parts):
         print(f"wp_pages_in_wa('{title} {M}')")
         wp_pages = wp_pages_in_wa(f"{title} {M}")
@@ -591,6 +592,7 @@ if __name__ == '__main__':
         wp_pages = wp_pages_in_wa(f"{title.replace("ou", "o")} {M}")
         print("wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))")
         wp_page_parts = wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))
+
     # print("mu_pages_in_wa(mu_pages, wa_manga_pages)")
     # mu_pages = mu_pages_in_wa(mu_pages, wa_manga_pages)
 

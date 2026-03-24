@@ -180,17 +180,11 @@ pip install requests pillow python-dateutil beautifulsoup4 mysqlclient
 
     1.1. Прописать в словаре `COOKIES_WA` **COOKIE** авторизации на **World Art**.
 
-    1.2. Прописать в словаре `COOKIES_WP` **COOKIE** для обхода анти-бот-защиты **Wikipedia** (en).
+    1.2. Прописать в кортеж `DB_CONNECT` параметры подключения к БД ("Сервер", "логин", "пароль", "БД").
 
-    1.3. Прописать в кортеж `DB_CONNECT` параметры подключения к БД ("Сервер", "логин", "пароль", "БД").
+    1.3. Прописать путь хранения микропостеров в переменную `PATH`. Например: `'C:/LOCALHOST/anime_manga/microposter/'`.
 
-    1.4. Прописать путь хранения микропостеров в переменную `PATH`. Например: `'C:/LOCALHOST/anime_manga/microposter/'`.
-
-    1.5. Актуализировать версию операционной системы Windows (`WINDOWS_VER`).
-
-    1.6. Актуализировать версию браузера Mozilla Firefox для User-Agent (`FIREFOX_VER`).
-
-    1.7. При желании отредактировать следующие словари:<ul>
+    1.4. При желании отредактировать следующие словари:<ul>
         <li>`FORM_ANN` — WA-форматы anime в **ANN**,</li>
         <li>`FORM_WP` — WA-форматы anime в **Wikipedia**,</li>
         <li>`IGNORED_GENRES` — игнорируемые жанры,</li>
@@ -199,7 +193,7 @@ pip install requests pillow python-dateutil beautifulsoup4 mysqlclient
         <li>`FREQUENCY` — периодичность издания в наименовании.</li>
         </ul>
 
-    1.8. Сохранить изменения файла `config.py`.
+    1.5. Сохранить изменения файла `config.py`.
 
 2. Отредактировать файл `input.py`.
 
