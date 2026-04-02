@@ -38,11 +38,13 @@ GENRES_ANN = {
     'fantasy': 'фэнтези',
     'horror': 'ужасы',
     'magic': 'магия',
+    'mystery': 'мистика',
     'psychological': 'психология',
     'romance': 'романтика',
     'science fiction': 'фантастика',
     'slice of life': 'повседневность',
-    'supernatural': 'сверхъестественное'
+    'supernatural': 'сверхъестественное',
+    'thriller': 'триллер'
 }
 
 # Жанры MangaUpdate.

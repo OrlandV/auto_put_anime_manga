@@ -174,8 +174,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                     for tit in ('number_of_volumes', 'number_of_chapters'):
                         if (tit not in mdata or not mdata[tit]) and wpdata[tit]:
                             mdata[tit] = wpdata[tit]
-                    if not len(mdata['publications']):
-                        mdata['publications'] = wpdata['publications']
+                    if not len(mdata['publication']):
+                        mdata['publication'] = wpdata['publication']
                     ids[M]['WP'].append(wpt)
                     break
 
@@ -293,10 +293,10 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
     if M in wa_data:
         for waid, wadata in wa_data[M].items():
             mdata = {'wa_id': waid, 'author_of_manga': [], 'number_of_volumes': None, 'number_of_chapters': None,
-                     'publications': [], 'poster': wadata['poster']}
+                     'publication': [], 'poster': wadata['poster']}
             for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'date_of_premiere'):
                 mdata[tit] = wadata[tit] if wadata[tit] else None
-            for tit in ('author_of_manga', 'publications'):
+            for tit in ('author_of_manga', 'publication'):
                 if len(wadata[tit]):
                     for ap in wadata[tit].values():
                         mdata[tit].append(ap)
@@ -335,10 +335,10 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 mdata[tit] = anndata[tit] if tit in anndata and anndata[tit] else None
             for tit in ('author_of_manga', 'genre'):
                 mdata[tit] = anndata[tit] if tit in anndata and len(anndata[tit]) else []
-            if len(anndata['publications']):
-                mdata['publications'] = []
-                for ap in anndata['publications'].values():
-                    mdata['publications'].append(ap)
+            if len(anndata['publication']):
+                mdata['publication'] = []
+                for ap in anndata['publication'].values():
+                    mdata['publication'].append(ap)
             ids[M]['ANN'].append(annid)
             mwp(1)
             # mmu(1)
@@ -358,13 +358,13 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                 'number_of_volumes': wpdata['number_of_volumes'] if wpdata['number_of_volumes'] else None,
                 'number_of_chapters': wpdata['number_of_chapters'] if wpdata['number_of_chapters'] else None,
                 'date_of_premiere': wpdata['date_of_premiere'] if wpdata['date_of_premiere'] else None,
-                'publications': wpdata['publications'],
+                'publication': wpdata['publication'],
                 'genre': []
             }
-            ip = len(mdata['publications'])
+            ip = len(mdata['publication'])
             for i in range(ip):
-                if not mdata['publications'][ip - i - 1]['publication']:
-                    mdata['publications'].pop(ip - i - 1)
+                if not mdata['publication'][ip - i - 1]['publication']:
+                    mdata['publication'].pop(ip - i - 1)
             # mmu()
             for tit in ('name_orig', 'name_rom'):
                 if not mdata[tit] and mdata['name_eng']:

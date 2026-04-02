@@ -28,10 +28,13 @@ def html(id_: int, am: bool = False, url: str | None = None) -> BeautifulSoup | 
         return BeautifulSoup(result.content, "html.parser")
 
 
-def anime_pages(aid: int) -> dict[int, BeautifulSoup]:
+def anime_pages(aid: int, pages: dict[int, BeautifulSoup] = {}, aids: set[int] | list[int] | tuple[int] = []
+                ) -> dict[int, BeautifulSoup] | None:
     """
     Поиск продолжений anime в WA и формирование словаря страниц.
     :param aid: ID anime в WA.
+    :param pages: Словарь уже найденных страниц anime.
+    :param aids: Множество, список или кортеж ID уже найденных страниц anime.
     :return: Словарь страниц в WA.
     """
     print(f"wa.anime_pages({aid})")
@@ -44,13 +47,15 @@ def anime_pages(aid: int) -> dict[int, BeautifulSoup]:
         lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
                     and tag.has_attr("width") and tag.attrs['width'] == "20" and ("#1" in tag.text or "#01" in tag.text)
     ).parent.parent.contents
-    res = {}
     for tr in trs:
-        nid = int(tr.contents[1].a.attrs['href'].split("?id=")[1])
-        res[nid] = page if nid == aid else html(nid)
-    if len(res):
-        return res
-    return {aid: page}
+        a = tr.contents[1].a
+        if "(отменённый проект)" not in a.text:
+            nid = int(a.attrs['href'].split("?id=")[1])
+            if nid not in pages and nid not in aids:
+                pages[nid] = page if nid == aid else html(nid)
+    if len(pages):
+        return pages
+    return {aid: page} if "(отменённый проект)" not in a.text else None
 
 
 def report(search: str, am: bool = False) -> None:
@@ -128,7 +133,7 @@ def search_anime(search: str, year: int, form: str, pages: dict[int, BeautifulSo
     if aid in pages or aid in aids:
         return
     if aid:
-        return anime_pages(aid)
+        return anime_pages(aid, pages, aids)
 
 
 def manga_pages(mid: int) -> dict[int, BeautifulSoup]:
@@ -275,7 +280,8 @@ def anime_id_from_manga(page: BeautifulSoup) -> list[int | None]:
         lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
                     and ("#1" in tag.text or "#01" in tag.text)
     ).parent.parent.contents
-    return [int(tr.contents[2].a.attrs['href'].split("?id=")[1]) for tr in trs]
+    return [int(tr.contents[2].a.attrs['href'].split("?id=")[1]) for tr in trs
+            if "(отменённый проект)" not in tr.contents[2].a.text]
 
 
 def anime_pages_from_manga(wa_anime_pages: dict[int, BeautifulSoup], wa_manga_pages: dict[int, BeautifulSoup]
@@ -508,7 +514,7 @@ def manga_date_of_premiere(page: BeautifulSoup, full_format: bool = True) -> str
     return td.text + ("-12-31" if full_format else "")
 
 
-def publications(page: BeautifulSoup) -> dict[int, dict[str, str]]:
+def publication(page: BeautifulSoup) -> dict[int, dict[str, str]]:
     """
     Извлечение изданий из страницы в WA.
     :param page: Страница (HTML-код) в WA.
@@ -530,6 +536,8 @@ def publications(page: BeautifulSoup) -> dict[int, dict[str, str]]:
             res[id_] = {'publication': a.text, 'publishing': c}
             if res[id_]['publishing'] == "Futabasha" and res[id_]['publication'] == "Manga Action":
                 res[id_]['publication'] = "Shuukan Manga Action"
+            elif res[id_]['publishing'] == "Kadokawa Shoten" and res[id_]['publication'] == "Asuka":
+                res[id_]['publication'] = "Gekkan Asuka"
     return res
 
 
@@ -569,7 +577,7 @@ def extraction_manga(page: BeautifulSoup) -> dict[str, str | dict[int, dict[str,
         'name_rus': str,
         'author_of_manga': dict[int, dict[str, str]],
         'date_of_premiere': str,
-        'publications': dict[int, dict[str, str]],
+        'publication': dict[int, dict[str, str]],
         'genre': list[str],
         'poster': str,
         'ann': int
@@ -583,16 +591,16 @@ def extraction_manga(page: BeautifulSoup) -> dict[str, str | dict[int, dict[str,
         'name_rus': manga_title_r(title_rus, page),
         'author_of_manga': authors(page),
         'date_of_premiere': manga_date_of_premiere(page),
-        'publications': publications(page),
+        'publication': publication(page),
         'genre': genres(page),
         'poster': poster(page, True),
         'ann': ann_manga_id(page)
     }
     if result['name_rus'] == result['name_rom']:
         result['name_rus'] = ''
-    if result['name_eng'] == '' and result['name_orig'] == result['name_rom']:
+    if not result['name_eng'] and result['name_orig'] == result['name_rom']:
         result['name_eng'] = result['name_rom']
-    elif result['name_rus'] == '' and result['name_eng'] and result['name_rom']:
+    elif not result['name_rus'] and result['name_eng'] and result['name_rom']:
         result['name_rus'] = result['name_rom']
         result['name_rom'] = result['name_eng']
     print(result['name_rom'])
@@ -772,9 +780,9 @@ def extraction_anime(page: BeautifulSoup, mid: int | None = None
     }
     if result['name_rus'] == result['name_rom']:
         result['name_rus'] = ''
-    if result['name_orig'] == result['name_rus'] and result['name_rom'] != '':
+    if result['name_orig'] == result['name_rus'] and result['name_rom']:
         result['name_orig'] = result['name_rom']
-    if result['name_eng'] == '' and result['name_orig'] == result['name_rom']:
+    if not result['name_eng'] and result['name_orig'] == result['name_rom']:
         result['name_eng'] = result['name_rom']
     if mid:
         result[M + '_id'] = mid

@@ -4,6 +4,7 @@
 import xml.etree.ElementTree as et
 from urllib.parse import quote
 from bs4 import BeautifulSoup
+from bs4.element import NavigableString
 import dateutil.parser as date_parser
 from html import unescape
 
@@ -45,12 +46,15 @@ def manga_date_of_premiere(ann_xml: et.Element) -> str | None:
     """
     if (info := ann_xml[0].find("././info[@type='Vintage']")) is not None:
         date = info.text
-        if len(date) == 7 or "to" in date:
-            return dn.month(date[:7])
+        ld = len(date)
+        dfs = date.find(" ")
+        if ld in (4, 7) or "to" in date:
+            if 7 in (ld, dfs):
+                return dn.month(date[:7])
+            if 4 in (ld, dfs):
+                return date[:4] + "-12-31"
         date = date[:date.find(" ") if "(" in date else 10]
-        if len(date) == 4:
-            date += "-12-31"
-        elif len(date_ := date.strip().split()) > 1:
+        if len(date_ := date.strip().split()) > 1:
             date += date_[0] + "-12-31"
         dp = date_parser.parse(date).strftime("%Y-%m-%d")
         if dp == date:
@@ -96,16 +100,15 @@ def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element]
             id_ = int(rel.attrib['id'])
             if id_ in mangas or id_ in mangas_ or id_ in animes or id_ in animes_:
                 continue
-            if (("adapt" in rel.attrib['rel'] or "alternate" in rel.attrib['rel'])
-                    and id_ not in mangas and id_ not in mangas_):
-                manga = xml(id_)
-                if manga.find("manga") is not None:
-                    rm[aid] = id_
-                    mangas_[id_] = manga
-                    mpages(manga)
-            elif id_ not in animes and id_ not in animes_:
+            if (rel.attrib['rel'] in ("adaptation", "adapted from", "alternate retelling", "alternate retelling of",
+                                       "compilation of", "prequel", "sequel", "sequel of")
+                    and id_ not in animes and id_ not in mangas and id_ not in mangas_ and id_ not in animes_):
                 xml_ = xml(id_)
-                if not xml_[0].find("warning"):
+                if xml_.find("manga") is not None:
+                    rm[aid] = id_
+                    mangas_[id_] = xml_
+                    mpages(xml_)
+                elif xml_.find("anime") is not None:
                     animes_[id_] = xml_
                     apages(xml_, id_)
 
@@ -121,15 +124,16 @@ def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element]
             if rel.attrib['rel'] == "serialized in":
                 continue
             id_ = int(rel.attrib['id'])
-            if rel.attrib['rel'] in ("adaptation", "adapted") or "alternate" in rel.attrib['rel']:
-                if id_ not in animes_:
-                    anime = xml(id_)
-                    if anime.find("anime") is not None:
-                        animes_[id_] = anime
-                        apages(anime, id_)
-            elif id_ not in mangas and id_ not in mangas_:
-                mangas_[id_] = xml(id_)
-                mpages(mangas_[id_])
+            if (rel.attrib['rel'] in ("adaptation", "adapted", "alternate retelling", "compilation", "spinoff",
+                                      "spinoff of")
+                    and id_ not in animes and id_ not in mangas and id_ not in animes_ and id_ not in mangas_):
+                xml_ = xml(id_)
+                if xml_.find("anime") is not None:
+                    animes_[id_] = xml_
+                    apages(xml_, id_)
+                elif xml_.find("manga") is not None:
+                    mangas_[id_] = xml_
+                    mpages(xml_)
 
     print(f"ann.pages(animes, mangas)")
     animes_ = {}
@@ -189,12 +193,13 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
                 break
             if am == A:
                 t = a.i.text[2:-1].split()
+                if "live-action" not in t and "novel" not in t and "stalled" not in t:
+                    page = xml(id_)
+                    if form and form == FORM_ANN[t[0]] and val_year():
+                        animes[id_] = page
+            elif am == M and "novel" not in a.text and t.find(search_) == 0:
                 page = xml(id_)
-                if "live-action" not in t and "novel" not in t and form and form == FORM_ANN[t[0]] and val_year():
-                    animes[id_] = page
-            elif am == M and "novel" not in a.text:
-                page = xml(id_)
-                if a.text.find(search_) == 0 and not val_year(True):
+                if not val_year(True):
                     mangas[id_] = page
     return pages(animes, mangas)
 
@@ -230,7 +235,8 @@ def authors(ann_xml: et.Element, am: bool = False) -> list[dict[str, str] | None
             page = html("people", {'id': person.attrib['id']})
             h1 = page.find("h1", {'id': "page_header"})
             name_rom_ = h1.text.strip().split()
-            name_rom = dn.normal_name(name_rom_[1].lower()).title() + " " + dn.normal_name(name_rom_[0].lower()).title()
+            name_rom = ((dn.normal_name(name_rom_[1].lower()).title() + " " if len(name_rom_) > 1 else "")
+                        + dn.normal_name(name_rom_[0].lower()).title())
             name_orig = h1.next_sibling.strip()
             if not name_orig:
                 for i in ("3", "2"):
@@ -251,7 +257,7 @@ def number_of_volumes(ann_xml: et.Element) -> int | None:
         return int(info.text)
 
 
-def publications(ann_xml: et.Element) -> dict[int, dict[str, str]] | None:
+def publication(ann_xml: et.Element) -> dict[int, dict[str, str]] | None:
     """
     Извлечение издания манги из XML-страницы в ANN.
     :param ann_xml: XML-страница в ANN.
@@ -267,27 +273,43 @@ def publications(ann_xml: et.Element) -> dict[int, dict[str, str]] | None:
         if not m_html:
             m_html = html(M, {'id': ann_xml[0].attrib['id']})
         b = m_html.find(lambda tag: tag.name == "table" and tag.has_attr("id") and tag.attrs['id'] == "credits")
-        if b := b.find_next(lambda tag: tag.name == "b" and "Publisher" in tag.text):
+        if b := b.find_next(lambda tag: tag.name == "b" and "Publisher" in tag.text or "Licensed by" in tag.text):
             a = b.parent.a
             return (a.text, int(a.attrs['href'].split("?id=")[1])) if f_id else a.text
 
     m_html = None
-    if (rel := ann_xml[0].find("././related-prev[@rel='serialized in']")) is not None:
-        id_ = int(rel.attrib['id'])
-        m_html = html(M, {'id': id_})
-        divs = m_html.find("div", {'id': "infotype-2"}).contents[1:]
-        p = None
-        for div in divs:
-            if " (Japanese)" in div.text:
-                p = div.text.removesuffix(" (Japanese)")
-                break
-        if not p:
-            p = divs[0].text
-        return {id_: {
-            'publication': (frequency(dn.o_ou(p)).replace("Gekkan Shounen Sunday", "Gekkan Shounen Magazine")),
-            'publishing': publishing(),
-            'type': 1
-        }}
+    if (rels := ann_xml[0].findall("././related-prev[@rel='serialized in']")) is not None:
+        res = {}
+        for rel in rels:
+            id_ = int(rel.attrib['id'])
+            m_html = html(M, {'id': id_})
+            ps = [m_html.find("h1", {'id': "page_header"}).text.strip()[1:-1]]
+            if (divs := m_html.find("div", {'id': "infotype-2"})) is not None:
+                ps.extend([div.text.removesuffix(" (Japanese)") for div in divs.contents[3:-1]
+                           if not isinstance(div, NavigableString) and " (Japanese)" in div.text
+                           or " (" not in div.text])
+            if len(ps) == 1:
+                p = ps[0]
+            else:
+                text = ""
+                for i, p in enumerate(ps):
+                    text += f"\n{i + 1}. {p}"
+                print(f"Укажите номер подходящего наименования издания «{ps[0]}»:{text}")
+                while True:
+                    num = input("Укажите номер: ")
+                    if num.isdigit():
+                        break
+                    print("Ошибка! Требуется ввести целое число.")
+                num = int(num)
+                if not num:
+                    return
+                p = ps[num - 1]
+            res[id_] = {
+                'publication': (frequency(dn.o_ou(p)).replace("Gekkan Shounen Sunday", "Gekkan Shounen Magazine")),
+                'publishing': publishing(),
+                'type': 1
+            }
+        return res
     elif (info := ann_xml[0].find("././info[@type='Vintage']")) is not None:
         publication_ = info.text[info.text.find("serialized in ") + 14:info.text.find(")")]
         if publication_:
@@ -330,6 +352,23 @@ def poster(ann_xml: et.Element) -> str | None:
         return info.attrib['src']
 
 
+def fix_name(result: dict[str, str | list[dict[str, str] | None] | int | dict[int, dict[str, str]] | list[str] | None]
+             ) -> dict[str, str | list[dict[str, str] | None] | int | dict[int, dict[str, str]] | list[str] | None]:
+    """
+    Коррекция наименований в словаре данных манги или anime в ANN.
+    :param result: Словарь данных манги или anime в ANN.
+    :return: Словарь данных манги или anime в ANN.
+    """
+    if not result['name_orig']:
+        if result['name_rom']:
+            result['name_orig'] = result['name_rom']
+        else:
+            result['name_orig'] = result['name_rom'] = result['name_eng']
+    elif result['name_orig'] == result['name_rom'] and result['name_rom'] != result['name_eng']:
+        result['name_rom'] = result['name_eng']
+    return result
+
+
 def extraction_manga(
         mid: int, ann_xml: et.Element
 ) -> dict[str, str | list[dict[str, str] | None] | int | dict[int, dict[str, str]] | list[str] | None]:
@@ -339,7 +378,7 @@ def extraction_manga(
     :param ann_xml: XML-страница в ANN.
     :return: Словарь данных манги в ANN.
     """
-    print(f"- ann.extraction_manga({mid}, ann_xml):", end=" ")
+    print(f"- ann.extraction_manga({mid}, ann_xml):")
     result = {
         'name_orig': title(ann_xml, 'orig'),
         'name_rom': title(ann_xml, 'rom'),
@@ -348,12 +387,11 @@ def extraction_manga(
         'author_of_manga': authors(ann_xml, True),
         'number_of_volumes': number_of_volumes(ann_xml),
         'date_of_premiere': manga_date_of_premiere(ann_xml),
-        'publications': publications(ann_xml),
+        'publication': publication(ann_xml),
         'genre': genres(ann_xml),
         'poster': poster(ann_xml)
     }
-    if not result['name_orig']:
-        result['name_orig'] = result['name_rom']
+    result = fix_name(result)
     print(result['name_rom'])
     return result
 
@@ -406,7 +444,7 @@ def extraction_anime(ann_xml: et.Element, mid: int | None = None
     :param mid: ID манги в ANN.
     :return: Словарь данных anime в ANN.
     """
-    print(f"- ann.extraction_anime(ann_xml, {mid}):", end=" ")
+    print(f"- ann.extraction_anime(ann_xml, {mid}):")
     result = {
         'name_orig': title(ann_xml, 'orig'),
         'name_rom': title(ann_xml, 'rom'),
@@ -420,10 +458,7 @@ def extraction_anime(ann_xml: et.Element, mid: int | None = None
         'genre': genres(ann_xml),
         'poster': poster(ann_xml)
     }
-    if not result['name_orig']:
-        result['name_orig'] = result['name_rom']
-    elif result['name_orig'] == result['name_rom'] and result['name_rom'] != result['name_eng']:
-        result['name_rom'] = result['name_eng']
+    result = fix_name(result)
     if mid:
         result[M + '_id'] = mid
     print(result['name_rom'])
