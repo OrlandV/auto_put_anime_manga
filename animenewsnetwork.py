@@ -67,13 +67,15 @@ def anime_date_of_premiere(ann_xml: et.Element) -> str | None:
     :param ann_xml: XML-страница в ANN.
     :return: Дата премьеры anime в ANN или None.
     """
-    info = ann_xml[0].find("././info[@type='Premiere date']") or ann_xml[0].find("././info[@type='Vintage']")
-    date = info.text[:10]
-    if len(dl := date.strip().split(" ")) > 1 and not dl[1].isdigit() or len(date) == 4:
-        date = dl[0] + "-12-31"
-    dp = date_parser.parse(date).strftime('%Y-%m-%d')
-    if dp == date:
-        return date
+    infos = ann_xml[0].findall("././info[@type='Premiere date']") or ann_xml[0].findall("././info[@type='Vintage']")
+    for info in infos:
+        if "gid" in info.attrib:
+            date = info.text[:10]
+            if len(dl := date.strip().split(" ")) > 1 and not dl[1].isdigit() or len(date) == 4:
+                date = dl[0] + "-12-31"
+            dp = date_parser.parse(date).strftime('%Y-%m-%d')
+            if dp == date:
+                return date
 
 
 def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element]
@@ -160,7 +162,7 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
     """
     def pars() -> tuple[int, str]:
         """
-        Извлечение ID, фрагмента HTML текста строки и нормализованного наименования из поискового ответа ANN.
+        Извлечение ID и нормализованного наименования из поискового ответа ANN.
         :return: Кортеж: ID, нормализованное наименование.
         """
         pe = a.text.find(" (")

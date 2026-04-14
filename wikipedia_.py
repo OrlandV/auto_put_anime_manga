@@ -101,7 +101,8 @@ def search_pages(search: str, res: dict[str, BeautifulSoup] = {}) -> dict[str, B
     return res
 
 
-def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]) -> dict[str, dict[str, dict[str, BeautifulSoup]]]:
+def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]
+                        ) -> dict[str, dict[str, dict[str, dict[str, BeautifulSoup | dict[str, str]]]]]:
     """
     Извлечение из страницы частей страницы (частей инфо-блоков) по отдельным манге и anime в WP.
     :param pages: Словарь страниц (HTML-код) в WP.
@@ -109,13 +110,33 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]) -> dict[str, dict
     {
         page_title: {
             'manga': {
-                manga_title: page_part,
+                manga_title: {
+                    'page_part': page_part,
+
+                    'titles': {
+                        'eng': title_eng,
+
+                        'orig': title_orig,
+
+                        'rom': title_rom
+
+                    },
 
                 ...
             },
 
             'anime': {
-                anime_title: page_part,
+                anime_title: {
+                    'page_part': page_part,
+
+                    'titles': {
+                        'eng': title_eng,
+
+                        'orig': title_orig,
+
+                        'rom': title_rom
+
+                    },
 
                 ...
             }
@@ -132,7 +153,9 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]) -> dict[str, dict
             res[am][t1] = res[am][ttl]
             del res[am][ttl]
             ttl += f" ({t})"
-        res[am][ttl] = res_
+        res[am][ttl] = {'page_part': res_}
+        if ttl_['rom'] or ttl_['eng'] or ttl_['orig']:
+            res[am][ttl]['titles'] = ttl_
         res_ = BeautifulSoup("<table></table>", "html.parser")
         ttl = None
 
@@ -218,7 +241,8 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]) -> dict[str, dict
     return result
 
 
-def filter_page_parts(pages: dict[str, dict[str, dict[str, BeautifulSoup]]]) -> dict[str, dict[str, BeautifulSoup]]:
+def filter_page_parts(pages: dict[str, dict[str, dict[str, dict[str, BeautifulSoup | dict[str, str]]]]]
+                      ) -> dict[str, dict[str, dict[str, BeautifulSoup | dict[str, str]]]]:
     """
     Фильтр частей страниц, удаляющий повторы, и переформатирование словаря частей страниц.
     :param pages: Словарь частей страниц — результат manga_anime_in_page.
@@ -260,13 +284,16 @@ def filter_page_parts(pages: dict[str, dict[str, dict[str, BeautifulSoup]]]) -> 
     return res
 
 
-def title_orig(part: BeautifulSoup) -> str | None:
+def title_orig(part: dict[str, BeautifulSoup | dict[str, str]]) -> str | None:
     """
     Извлечение оригинального наименования манги или anime из соответствующей части инфо-блока в WP.
     :param part: Часть страницы манги в WP (HTML-код).
     :return: Оригинальное наименование манги или anime в WP, если найдено. Иначе — None.
     """
-    th = part.find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"] and tag.text == "Kanji")
+    if "titles" in part and "orig" in part['titles']:
+        return part['titles']['orig']
+    th = part['page_part'].find(lambda tag: tag.name == "th" and tag.attrs['class'] == ["infobox-label"]
+                                            and tag.text == "Kanji")
     if th:
         return dn.decode_name(th.next_sibling.text)
 
@@ -472,7 +499,7 @@ def poster(part: BeautifulSoup) -> str | None:
         return url[:p] if p > 3 else url
 
 
-def extraction_manga(part: BeautifulSoup, tit: str
+def extraction_manga(part: dict[str, BeautifulSoup | dict[str, str]], tit: str
                      ) -> dict[str, str | list[dict[str, str] | None] | int | list[str | None]]:
     """
     Извлечение данных по манге из соответствующей части инфо-блока в WP.
@@ -480,7 +507,8 @@ def extraction_manga(part: BeautifulSoup, tit: str
     :param tit: Заголовок страницы.
     :return: Словарь данных по манге в WP:
     {
-        'name_orig': str,
+        'name_orig': str | None,
+        'name_rom': str | None,
         'name_eng': str,
         'author_of_manga': list[dict[str, str] | None],
         'number_of_volumes': int,
@@ -493,13 +521,14 @@ def extraction_manga(part: BeautifulSoup, tit: str
     print("- " * 3, "wp.extraction_manga")
     result = {
         'name_orig': title_orig(part),
-        'name_eng': tit,
-        'author_of_manga': authors(part, "Written", "Illustrated"),
-        'number_of_volumes': number_of_volumes(part),
-        'number_of_chapters': number_of_chapters(part),
-        'date_of_premiere': date_of_premiere(part),
-        'publication': publication(part),
-        'poster': poster(part)
+        'name_rom': part['titles']['rom'] if "titles" in part and "rom" in part['titles'] else None,
+        'name_eng': part['titles']['eng'] if "titles" in part and "eng" in part['titles'] else tit,
+        'author_of_manga': authors(part['page_part'], "Written", "Illustrated"),
+        'number_of_volumes': number_of_volumes(part['page_part']),
+        'number_of_chapters': number_of_chapters(part['page_part']),
+        'date_of_premiere': date_of_premiere(part['page_part']),
+        'publication': publication(part['page_part']),
+        'poster': poster(part['page_part'])
     }
     return result
 
@@ -588,14 +617,16 @@ def studios(part: BeautifulSoup) -> list[str] | None:
         return res
 
 
-def extraction_anime(part: BeautifulSoup, tit: str) -> dict[str, str | int | list[str] | list[dict[str, str]] | None]:
+def extraction_anime(part: dict[str, BeautifulSoup | dict[str, str]], tit: str
+                     ) -> dict[str, str | int | list[str] | list[dict[str, str]] | None]:
     """
     Извлечение данных по anime из соответствующей части инфо-блока в WP.
     :param part: Часть страницы anime в WP (HTML-код).
     :param tit: Заголовок страницы.
     :return: Словарь данных по anime в WP:
     {
-        'name_orig': str,
+        'name_orig': str | None,
+        'name_rom': str | None,
         'name_eng': str,
         'format': str | None,
         'number_of_episodes': int,
@@ -609,19 +640,20 @@ def extraction_anime(part: BeautifulSoup, tit: str) -> dict[str, str | int | lis
     print("- " * 3, "wp.extraction_anime")
     result = {
         'name_orig': title_orig(part),
-        'name_eng': tit,
-        'format': anime_format(part),
-        'number_of_episodes': number_of_episodes(part),
-        'duration': duration(part),
-        'date_of_premiere': date_of_premiere(part),
-        'studio': studios(part),
-        'director': authors(part, "Directed"),
-        'poster': poster(part)
+        'name_rom': part['titles']['rom'] if "titles" in part and "rom" in part['titles'] else None,
+        'name_eng': part['titles']['eng'] if "titles" in part and "eng" in part['titles'] else tit,
+        'format': anime_format(part['page_part']),
+        'number_of_episodes': number_of_episodes(part['page_part']),
+        'duration': duration(part['page_part']),
+        'date_of_premiere': date_of_premiere(part['page_part']),
+        'studio': studios(part['page_part']),
+        'director': authors(part['page_part'], "Directed"),
+        'poster': poster(part['page_part'])
     }
     return result
 
 
-def extraction_data(page_parts: dict[str, dict[str, BeautifulSoup]]
+def extraction_data(page_parts: dict[str, dict[str, dict[str, BeautifulSoup | dict[str, str]]]]
                     ) -> dict[str, dict[str, str | int | list[str | None] | list[dict[str, str] | None] | None]]:
     """
     Извлечение данных из частей инфо-блоков в WP.

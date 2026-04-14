@@ -350,8 +350,8 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             if wpt in ids[M]['WP']:
                 continue
             mdata = {
-                'name_orig': None,
-                'name_rom': None,
+                'name_orig': wpdata['name_orig'],
+                'name_rom': wpdata['name_rom'],
                 'name_eng': wpdata['name_eng'] if wpdata['name_eng'] else wpt,
                 'name_rus': None,
                 'author_of_manga': wpdata['author_of_manga'] if len(wpdata['author_of_manga']) else [],
