@@ -627,48 +627,50 @@ if __name__ == '__main__':
              M: [int(k) for k in wa_manga_pages.keys()] if wa_manga_pages and len(wa_manga_pages) else []}
     wa_anime_pages = {}
     wa_manga_pages = {}
-    for am, anndata in ann_data.items():
-        for annid, data in anndata.items():
-            if (am == M and not len(wa_manga_pages)) or (am == A and not len(wa_anime_pages)) or am not in wa_data:
-                wa_pages_update("ann")
-            else:
-                for wadata in wa_data[am].values():
-                    if int(annid) == wadata['ann']:
-                        break
+    if ann_data:
+        for am, anndata in ann_data.items():
+            for annid, data in anndata.items():
+                if (am == M and not len(wa_manga_pages)) or (am == A and not len(wa_anime_pages)) or am not in wa_data:
+                    wa_pages_update("ann")
                 else:
-                    if am == M and len(wa_manga_pages):
-                        for wmp in wa_manga_pages.values():
-                            if f"{ANNE}{M}.php?id={annid}" in wmp:
-                                break
-                        else:
-                            wa_pages_update("ann")
-                    elif am == A and len(wa_anime_pages):
-                        for wap in wa_anime_pages.values():
-                            if f"{SANNE}{A}.php?id={annid}" in wap:
-                                break
-                        else:
-                            wa_pages_update("ann")
-    for am, wpdata in wp_data.items():
-        for wptit, data in wpdata.items():
-            if (am == M and not len(wa_manga_pages)) or (am == A and not len(wa_anime_pages)) or am not in wa_data:
-                wa_pages_update("wp")
-            else:
-                for wadata in wa_data[am].values():
-                    if normal_name(wptit) == normal_name(wadata['name_eng']):
-                        break
+                    for wadata in wa_data[am].values():
+                        if int(annid) == wadata['ann']:
+                            break
+                    else:
+                        if am == M and len(wa_manga_pages):
+                            for wmp in wa_manga_pages.values():
+                                if f"{ANNE}{M}.php?id={annid}" in wmp:
+                                    break
+                            else:
+                                wa_pages_update("ann")
+                        elif am == A and len(wa_anime_pages):
+                            for wap in wa_anime_pages.values():
+                                if f"{SANNE}{A}.php?id={annid}" in wap:
+                                    break
+                            else:
+                                wa_pages_update("ann")
+    if wp_data:
+        for am, wpdata in wp_data.items():
+            for wptit, data in wpdata.items():
+                if (am == M and not len(wa_manga_pages)) or (am == A and not len(wa_anime_pages)) or am not in wa_data:
+                    wa_pages_update("wp")
                 else:
-                    if am == M and len(wa_manga_pages):
-                        for wmp in wa_manga_pages.values():
-                            if f"{WPE}{wptit.replace(" ", "_")}" in wmp:
-                                break
-                        else:
-                            wa_pages_update("wp")
-                    elif am == A and len(wa_anime_pages):
-                        for wap in wa_anime_pages.values():
-                            if f"{WPE}{wptit.replace(" ", "_")}" in wap:
-                                break
-                        else:
-                            wa_pages_update("wp")
+                    for wadata in wa_data[am].values():
+                        if normal_name(wptit) == normal_name(wadata['name_eng']):
+                            break
+                    else:
+                        if am == M and len(wa_manga_pages):
+                            for wmp in wa_manga_pages.values():
+                                if f"{WPE}{wptit.replace(" ", "_")}" in wmp:
+                                    break
+                            else:
+                                wa_pages_update("wp")
+                        elif am == A and len(wa_anime_pages):
+                            for wap in wa_anime_pages.values():
+                                if f"{WPE}{wptit.replace(" ", "_")}" in wap:
+                                    break
+                            else:
+                                wa_pages_update("wp")
     wa_rm = {}
     if len(wa_anime_pages):
         print("wa.manga_pages_from_anime(wa_manga_pages, wa_anime_pages)")
