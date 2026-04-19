@@ -36,24 +36,26 @@ class Page:
         :param search: Искомое наименование.
         """
         self.url = None
+        self.html = None
         _html = BeautifulSoup(anti_bot("WP", WPE_SEARCH + search.replace(" ", "+")), "html.parser")
-        ul = _html.find("ul", {'class': "mw-search-results"}).contents
-        for li in ul:
-            div = li.find_next("div", {'class': "mw-search-result-heading"})
-            if search in div.a.text:
-                self.url = div.a.attrs['href'].removeprefix("/wiki/")
-            elif search in dn.normal_name(li.find_next("div", {'class': "searchresult"}).text):
-                self.url = li.a.attrs['href'].removeprefix("/wiki/")
-            if self.url:
-                self.html = page(self.url)
-                break
-        else:
-            url = search.replace(" ", "_")
-            self.html = page(url)
-            self.url = url
-        if f"{A} and {M}" not in self.html.text.lower():
-            self.html = None
-            self.url = None
+        if not ((dsr := _html.find("div", {'class': "mw-search-results-info"})) and "does not exist" in dsr.text):
+            ul = _html.find("ul", {'class': "mw-search-results"}).contents
+            for li in ul:
+                div = li.find_next("div", {'class': "mw-search-result-heading"})
+                if search in div.a.text:
+                    self.url = div.a.attrs['href'].removeprefix("/wiki/")
+                elif search in dn.normal_name(li.find_next("div", {'class': "searchresult"}).text):
+                    self.url = li.a.attrs['href'].removeprefix("/wiki/")
+                if self.url:
+                    self.html = page(self.url)
+                    break
+            else:
+                url = search.replace(" ", "_")
+                self.html = page(url)
+                self.url = url
+            if f"{A} and {M}" not in self.html.text.lower():
+                self.html = None
+                self.url = None
 
 
 def search_pages(search: str, res: dict[str, BeautifulSoup] = {}) -> dict[str, BeautifulSoup]:

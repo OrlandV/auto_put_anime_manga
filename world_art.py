@@ -43,19 +43,21 @@ def anime_pages(aid: int, pages: dict[int, BeautifulSoup] = {}, aids: set[int] |
                               and tag.attrs['size'] == "2" and "Информация о серии" in tag.text)
     if not f:
         return {aid: page}
-    trs = f.find_next(
+    if trs := f.find_next(
         lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
                     and tag.has_attr("width") and tag.attrs['width'] == "20" and ("#1" in tag.text or "#01" in tag.text)
-    ).parent.parent.contents
-    for tr in trs:
-        a = tr.contents[1].a
-        if "(отменённый проект)" not in a.text:
-            nid = int(a.attrs['href'].split("?id=")[1])
-            if nid not in pages and nid not in aids:
-                pages[nid] = page if nid == aid else html(nid)
-    if len(pages):
-        return pages
-    return {aid: page} if "(отменённый проект)" not in a.text else None
+    ):
+        trs = trs.parent.parent.contents
+        for tr in trs:
+            a = tr.contents[1].a
+            if "(отменённый проект)" not in a.text:
+                nid = int(a.attrs['href'].split("?id=")[1])
+                if nid not in pages and nid not in aids:
+                    pages[nid] = page if nid == aid else html(nid)
+        if len(pages):
+            return pages
+        return {aid: page} if "(отменённый проект)" not in a.text else None
+    return {aid: page}
 
 
 def report(search: str, am: bool = False) -> None:

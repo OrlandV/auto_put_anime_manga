@@ -35,7 +35,7 @@ def normal_name(name: str) -> str:
     :return: Нормализованное наименование.
     """
     name = (o_ou(decode_name(name)).lower().replace('×', 'x').replace('_', ' ').
-            replace('ö', 'o').replace('-', ' ').strip())
+            replace('ö', 'o').replace('-', ' ').replace('ä', 'a').strip())
     chars = 'abcdefghijklmnopqrstuvwxyz 0123456789'
     name2 = ''
     for i in range(len(name)):

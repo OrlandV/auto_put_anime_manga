@@ -191,6 +191,8 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
     a = data.find(lambda tag: tag.name == "strong" and tag.text == search_)
     nr = a.previous_sibling.text
     nr = nr[:nr.find(" ")]
+    while len(nr) and not nr[-1].isdigit():
+        nr = nr[:-1]
     if nr.isdigit():
         for _ in range(int(nr)):
             a = a.find_next("a")
