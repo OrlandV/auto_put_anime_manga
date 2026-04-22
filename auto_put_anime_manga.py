@@ -261,7 +261,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                         if qd:
                             if 'name_rus' not in d:
                                 d = wa.search_people(d['name_rom'])
-                            if d:
+                            if d and d not in adata['director']:
                                 dd.append(d)
                     adata['director'].extend(dd)
                     if not c:
@@ -315,7 +315,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                         for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'number_of_volumes', 'poster'):
                             if not mdata[tit] and anndata[tit]:
                                 mdata[tit] = anndata[tit]
-                        if annd == md and mdata['date_of_premiere'] != anndata['date_of_premiere']:
+                        if mdata['date_of_premiere'] != anndata['date_of_premiere']:  # annd == md and
                             mdata['date_of_premiere'] = anndata['date_of_premiere']
                         mdata['ann_id'] = annid
                         ids[M]['ANN'].append(annid)

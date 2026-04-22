@@ -706,16 +706,20 @@ def directors(page: BeautifulSoup) -> list[dict[str, str]] | None:
         if f := page.find(lambda tag: tag.name == "font" and "Режиссер:" in tag.text):
             trs = f.parent.parent.parent.contents
             res = []
-            d1 = False
-            for tr in range(len(trs)):
-                if tr:
-                    tds = trs[tr].contents
-                    if len(tds) > 2 and not tds[2].td:
-                        d1 = True
-                    a = tds[1].a.attrs['href'].split("?id=")
-                    res.append(people(int(a[1])))
-                    if d1:
-                        break
+            tr = 1
+            while tr < len(trs):
+                tds = trs[tr].contents
+                if len(tds) == 4 and not (tds[2].tr or tds[2].name == "tr"):
+                    break
+                res.append(people(int(tds[1].a.attrs['href'].split("?id=")[1])))
+                if len(tds) > 2:
+                    if tds[2].tr:
+                        trs = [tds[2]]
+                    elif tds[2].name == "tr":
+                        trs = tds[2:]
+                    tr = 0
+                    continue
+                tr += 1
             return res
 
 

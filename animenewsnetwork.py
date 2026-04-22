@@ -106,6 +106,8 @@ def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element]
                 continue
             id_ = int(rel.attrib['id'])
             if id_ in mangas or id_ in mangas_ or id_ in animes or id_ in animes_:
+                if (aid in animes or aid in animes_) and (id_ in mangas or id_ in mangas_):
+                    rm[aid] = id_
                 continue
             if (rel.attrib['rel'] in ("adaptation", "adapted from", "alternate retelling", "alternate retelling of",
                                        "compilation of", "prequel", "sequel", "sequel of")

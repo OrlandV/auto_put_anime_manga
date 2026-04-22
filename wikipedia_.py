@@ -38,24 +38,24 @@ class Page:
         self.url = None
         self.html = None
         _html = BeautifulSoup(anti_bot("WP", WPE_SEARCH + search.replace(" ", "+")), "html.parser")
-        if not ((dsr := _html.find("div", {'class': "mw-search-results-info"})) and "does not exist" in dsr.text):
-            ul = _html.find("ul", {'class': "mw-search-results"}).contents
-            for li in ul:
-                div = li.find_next("div", {'class': "mw-search-result-heading"})
-                if search in div.a.text:
-                    self.url = div.a.attrs['href'].removeprefix("/wiki/")
-                elif search in dn.normal_name(li.find_next("div", {'class': "searchresult"}).text):
-                    self.url = li.a.attrs['href'].removeprefix("/wiki/")
-                if self.url:
-                    self.html = page(self.url)
-                    break
-            else:
-                url = search.replace(" ", "_")
-                self.html = page(url)
-                self.url = url
-            if f"{A} and {M}" not in self.html.text.lower():
-                self.html = None
-                self.url = None
+        # if not ((dsr := _html.find("div", {'class': "mw-search-results-info"})) and "does not exist" in dsr.text):
+        ul = _html.find("ul", {'class': "mw-search-results"}).contents
+        for li in ul:
+            div = li.find_next("div", {'class': "mw-search-result-heading"})
+            if search in div.a.text:
+                self.url = div.a.attrs['href'].removeprefix("/wiki/")
+            elif search in dn.normal_name(li.find_next("div", {'class': "searchresult"}).text):
+                self.url = li.a.attrs['href'].removeprefix("/wiki/")
+            if self.url:
+                self.html = page(self.url)
+                break
+        else:
+            url = search.replace(" ", "_")
+            self.html = page(url)
+            self.url = url
+        if f"{A} and {M}" not in self.html.text.lower():
+            self.html = None
+            self.url = None
 
 
 def search_pages(search: str, res: dict[str, BeautifulSoup] = {}) -> dict[str, BeautifulSoup]:
@@ -321,45 +321,50 @@ def authors(part: BeautifulSoup, *args) -> list[dict[str, str] | None]:
         Извлечение оригинального и ромадзи имён из HTML-страницы автора в WP и добавление в список result.
         :param _name: Ромадзи (английское) имя из страницы как есть.
         """
-        _name = _name.removeprefix("/wiki/")
-        apage = page(_name)
-        if apage:
-            if (_th := apage.find("th", {'class': "infobox-above"})) is not None:
-                _name = _th.text
-                _name_rom = normal_rom(_name)
-            elif (caption := apage.find("caption", {'class': "infobox-title"})) is not None:
-                _name_rom = normal_rom(caption.text)
-            div = apage.find(
-                lambda tag: tag.parent.name == "td" and tag.parent.has_attr("class")
-                            and tag.parent.attrs['class'] == ["infobox-subheader"] and tag.name == "div"
-                            and tag.has_attr("class") and tag.attrs['class'] == ["nickname"] and tag.has_attr("lang")
-                            and tag.attrs['lang'] == "ja")
-            if div:
-                _name_orig = div.text
-            elif ((b := apage.find(lambda tag: tag.name == "b" and _name in tag.text)) is not None
-                  and (span := b.find_next("span", {'lang': "ja"})) is not None):
-                _name_orig = span.text
-            elif (span := apage.find(
-                lambda tag: tag.name == "span" and tag.has_attr("lang") and tag.attrs['lang'] == "ja"
-                            and tag.parent.parent.parent.has_attr("class")
-                            and "infobox-above" in tag.parent.parent.parent.attrs['class']
-            )) is not None:
-                span = span.text
-                b = span.find(" (")
-                _name_orig = span[:b] if b != -1 else span
-            else:
-                # _page = str(apage)
-                # _pos1 = _page.find("</b> (") + 6
-                # _pos2 = _page.find(" <", _pos1)
-                # _name_orig = _page[_pos1:_pos2]
-                # _pos1 = _pos2 + 4
-                # _pos2 = _page.find("<", _pos1)
-                # _name_rom = normal_rom(_page[_pos1:_pos2])
-                _name_orig = _name_rom
-            result.append({'name_orig': _name_orig, 'name_rom': _name_rom})
+        if _name[2] == "/":
+            result.append({'name_rom': normal_rom(_name.replace("_", " ")[_name.find("=") + 1:_name.find("&")])})
         else:
-            pos = _name.find("_(")
-            result.append({'name_rom': normal_rom(_name[:pos if pos > 0 else None].replace("_", " "))})
+            _name = _name.removeprefix("/wiki/")
+            apage = page(_name)
+            if apage:
+                _name_rom = None
+                _name = _name.replace("_", " ")
+                if (_th := apage.find("th", {'class': "infobox-above"})) is not None:
+                    _name = _th.text
+                    _name_rom = normal_rom(_name)
+                elif (caption := apage.find("caption", {'class': "infobox-title"})) is not None:
+                    _name_rom = normal_rom(caption.text)
+                div = apage.find(
+                    lambda tag: tag.parent.name == "td" and tag.parent.has_attr("class")
+                                and tag.parent.attrs['class'] == ["infobox-subheader"] and tag.name == "div"
+                                and tag.has_attr("class") and tag.attrs['class'] == ["nickname"]
+                                and tag.has_attr("lang") and tag.attrs['lang'] == "ja")
+                if div:
+                    _name_orig = div.text
+                elif ((b := apage.find(lambda tag: tag.name == "b" and _name in tag.text)) is not None
+                      and (span := b.find_next("span", {'lang': "ja"})) is not None):
+                    _name_orig = span.text
+                elif (span := apage.find(
+                    lambda tag: tag.name == "span" and tag.has_attr("lang") and tag.attrs['lang'] == "ja"
+                                and tag.parent.parent.parent.has_attr("class")
+                                and "infobox-above" in tag.parent.parent.parent.attrs['class']
+                )) is not None:
+                    span = span.text
+                    b = span.find(" (")
+                    _name_orig = span[:b] if b != -1 else span
+                else:
+                    # _page = str(apage)
+                    # _pos1 = _page.find("</b> (") + 6
+                    # _pos2 = _page.find(" <", _pos1)
+                    # _name_orig = _page[_pos1:_pos2]
+                    # _pos1 = _pos2 + 4
+                    # _pos2 = _page.find("<", _pos1)
+                    # _name_rom = normal_rom(_page[_pos1:_pos2])
+                    _name_orig = _name_rom
+                result.append({'name_orig': _name_orig, 'name_rom': _name_rom or normal_rom(_name)})
+            else:
+                pos = _name.find("_(")
+                result.append({'name_rom': normal_rom(_name[:pos if pos > 0 else None])})
 
     result = []
     for staff in args:
@@ -374,7 +379,9 @@ def authors(part: BeautifulSoup, *args) -> list[dict[str, str] | None]:
                     else:
                         result.append({'name_rom': normal_rom(li.text)})
             elif td and td.a and td.a.has_attr("href"):
-                orig_rom(td.a.attrs['href'])
+                aa = td.find_all("a")
+                for a in aa:
+                    orig_rom(a.attrs['href'])
             else:
                 result.append({'name_rom': normal_rom(td.text)})
     return result
