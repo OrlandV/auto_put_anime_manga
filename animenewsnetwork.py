@@ -427,6 +427,8 @@ def number_of_episodes(ann_xml: et.Element) -> int:
         if " " in res:
             res = res[:res.find(" ")]
         return int(res)
+    if (episodes := ann_xml[0].findall("././episode")) is not None:
+        return len(episodes)
     return 1
 
 

@@ -53,7 +53,7 @@ class Page:
             url = search.replace(" ", "_")
             self.html = page(url)
             self.url = url
-        if f"{A} and {M}" not in self.html.text.lower():
+        if not self.html.find("table", {'class': "infobox"}):
             self.html = None
             self.url = None
 
@@ -147,17 +147,23 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]
     """
     def res_add() -> None:
         nonlocal res, res_, ttl
+        ttl_c = ttl_.copy()
         if am not in res:
             res[am] = {}
-        ttl = ttl or ttl_['rom'] or ttl_['eng'] or ttl_['orig']
+        ttl = ttl or ttl_c['rom'] or ttl_c['eng'] or ttl_c['orig']
         if ttl in res[am]:
-            t1 = f"{ttl} ({res[am][ttl].td.text})"
-            res[am][t1] = res[am][ttl]
-            del res[am][ttl]
+            t1 = res[am][ttl]['page_part'].td.text
+            if t1 not in ttl_.values():
+                res[am][f'{ttl} ({t1})'] = res[am][ttl]
+                del res[am][ttl]
             ttl += f" ({t})"
         res[am][ttl] = {'page_part': res_}
-        if ttl_['rom'] or ttl_['eng'] or ttl_['orig']:
-            res[am][ttl]['titles'] = ttl_
+        if ttl_c['rom'] or ttl_c['eng'] or ttl_c['orig']:
+            res[am][ttl]['titles'] = ttl_c
+            if ttl not in ttl_c.values() and " (Original video animation)" not in ttl:
+                for l in ("eng", "orig", "rom"):
+                    if l in res[am][ttl]['titles']:
+                        res[am][ttl]['titles'][l] += ": " + ttl
         res_ = BeautifulSoup("<table></table>", "html.parser")
         ttl = None
 
@@ -166,7 +172,7 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]
     pages = pages.items() if isinstance(pages, dict) else pages
     for page_title, _page in pages:
         print("-", page_title)
-        s = ns = n = e = ias = ttl = None
+        s = n = ns = e = ias = ttl = None
         if isinstance(_page, str):
             _page = BeautifulSoup(_page, "html.parser")
         tr = _page.find("table", {'class': "infobox"}).tbody.contents
@@ -175,6 +181,9 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]
         res = {}
         ttl_ = {'eng': None, 'orig': None, 'rom': None}
         while i < len(tr):
+            if i == len(tr) - 1 and tr[i].find_next("tr"):
+                tr = tr[i].contents
+                i = 0
             if s and isinstance(tr[i], NavigableString):
                 s = False
                 i += 1
@@ -193,8 +202,8 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]
                             n = True
                         else:
                             am = M if "Manga" in t else A
-                    elif t in ("Feature films", "Films", "Live-action film", "Related series", "Related works",
-                               "Spin-offs", "Television series"):
+                    elif t in ("Feature films", "Films", "Live-action film", "Light novel", "Related series",
+                               "Related works", "Spin-offs", "Television series"):
                         s = True
                         i += 1
                         continue
@@ -300,6 +309,17 @@ def title_orig(part: dict[str, BeautifulSoup | dict[str, str]]) -> str | None:
         return dn.decode_name(th.next_sibling.text)
 
 
+def parentheses_remove(text: str) -> str:
+    """
+    Отбрасывание от текста примечания в круглых скобках.
+    :param text: Текст.
+    :return: Текст без примечания в круглых скобках.
+    """
+    if " (" in text:
+        return text[:text.find(" (")]
+    return text
+
+
 def authors(part: BeautifulSoup, *args) -> list[dict[str, str] | None]:
     """
     Извлечение имён авторов манги или режиссёров anime из соответствующей части инфо-блока в WP.
@@ -352,6 +372,14 @@ def authors(part: BeautifulSoup, *args) -> list[dict[str, str] | None]:
                     span = span.text
                     b = span.find(" (")
                     _name_orig = span[:b] if b != -1 else span
+                elif (span := apage.find(
+                    lambda tag: tag.name == "span" and tag.has_attr("lang") and tag.attrs['lang'] == "ja"
+                                and tag.parent.parent.parent.parent.has_attr("class")
+                                and "infobox-above" in tag.parent.parent.parent.parent.attrs['class']
+                )) is not None:
+                    span = span.text
+                    b = span.find(" (")
+                    _name_orig = span[:b] if b != -1 else span
                 else:
                     # _page = str(apage)
                     # _pos1 = _page.find("</b> (") + 6
@@ -373,17 +401,17 @@ def authors(part: BeautifulSoup, *args) -> list[dict[str, str] | None]:
         if th:
             td = th.next_sibling
             if td and td.ul:
-                for li in td.ul.contants:
+                for li in td.ul.contents:
                     if li.a and li.a.has_attr("href"):
                         orig_rom(li.a.attrs['href'])
                     else:
-                        result.append({'name_rom': normal_rom(li.text)})
+                        result.append({'name_rom': normal_rom(parentheses_remove(li.text))})
             elif td and td.a and td.a.has_attr("href"):
                 aa = td.find_all("a")
                 for a in aa:
                     orig_rom(a.attrs['href'])
             else:
-                result.append({'name_rom': normal_rom(td.text)})
+                result.append({'name_rom': normal_rom(parentheses_remove(td.text))})
     return result
 
 
@@ -619,10 +647,10 @@ def studios(part: BeautifulSoup) -> list[str] | None:
         res = []
         if ul:
             for li in ul.contents:
-                res.append(dn.decode_name(li.text))
+                res.append(dn.decode_name(parentheses_remove(li.text)))
         else:
             for t in td.text.split("\n"):
-                res.append(dn.decode_name(t))
+                res.append(dn.decode_name(parentheses_remove(t)))
         return res
 
 

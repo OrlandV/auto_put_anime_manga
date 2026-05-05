@@ -138,29 +138,43 @@ def search_anime(search: str, year: int, form: str, pages: dict[int, BeautifulSo
         return anime_pages(aid, pages, aids)
 
 
-def manga_pages(mid: int) -> dict[int, BeautifulSoup]:
+def manga_date_of_premiere(page: BeautifulSoup, full_format: bool = True) -> str:
+    """
+    Извлечение даты премьеры манги из страницы в WA.
+    :param page: Страница (HTML-код) в WA.
+    :param full_format: Флаг полного формата даты (гггг.мм.дд). Если False, то только год (гггг).
+    :return: Дата премьеры манги в WA.
+    """
+    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
+                               and "Год выпуска" in tag.text).next_sibling.next_sibling
+    return td.text + ("-12-31" if full_format else "")
+
+
+def manga_pages(mid: int, year: int) -> dict[int, BeautifulSoup] | None:
     """
     Поиск продолжений манги в WA и формирование словаря страниц.
-    :param mid: Страница манги в WA (HTML-код, возвращённый search_manga_in_anime_page).
+    :param mid: ID манги в WA (переданный из search_manga).
+    :param year: Год премьеры манги.
     :return: Словарь страниц манги в WA.
     """
-    print(f"- - wa.manga_pages({mid})")
+    print(f"- wa.manga_pages({mid})")
     page = html(mid, True)
-    f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size")
-                              and tag.attrs['size'] == "2" and "Эта серия состоит из" in tag.text)
-    if not f:
+    if year == int(manga_date_of_premiere(page, False)):
+        f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size")
+                                  and tag.attrs['size'] == "2" and "Эта серия состоит из" in tag.text)
+        if not f:
+            return {mid: page}
+        trs = f.find_next(
+            lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
+                        and ("#1" in tag.text or "#01" in tag.text)
+        ).parent.parent.contents
+        res = {}
+        for tr in trs:
+            nid = int(tr.contents[1].a.attrs['href'].split("?id=")[1])
+            res[nid] = page if nid == mid else html(nid)
+        if len(res):
+            return res
         return {mid: page}
-    trs = f.find_next(
-        lambda tag: tag.name == "td" and tag.has_attr("valign") and tag.attrs['valign'] == "top"
-                    and ("#1" in tag.text or "#01" in tag.text)
-    ).parent.parent.contents
-    res = {}
-    for tr in trs:
-        nid = int(tr.contents[1].a.attrs['href'].split("?id=")[1])
-        res[nid] = page if nid == mid else html(nid)
-    if len(res):
-        return res
-    return {mid: page}
 
 
 def search_manga(search: str, year: int, pages: dict[int, BeautifulSoup] = {},
@@ -196,7 +210,7 @@ def search_manga(search: str, year: int, pages: dict[int, BeautifulSoup] = {},
                     break
     if mid in pages or mid in mids:
         return
-    return manga_pages(mid) if mid else None
+    return manga_pages(mid, year) if mid else None
 
 
 def manga_pages_from_anime(
@@ -502,18 +516,6 @@ def authors(page: BeautifulSoup) -> dict[int, dict[str, str]]:
             id_ = int(a.attrs['href'].split("?id=")[1])
             res[id_] = people(id_)
     return res
-
-
-def manga_date_of_premiere(page: BeautifulSoup, full_format: bool = True) -> str:
-    """
-    Извлечение даты премьеры манги из страницы в WA.
-    :param page: Страница (HTML-код) в WA.
-    :param full_format: Флаг полного формата даты (гггг.мм.дд). Если False, то только год (гггг).
-    :return: Дата премьеры манги в WA.
-    """
-    td = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
-                               and "Год выпуска" in tag.text).next_sibling.next_sibling
-    return td.text + ("-12-31" if full_format else "")
 
 
 def publication(page: BeautifulSoup) -> dict[int, dict[str, str]]:

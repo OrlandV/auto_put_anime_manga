@@ -369,11 +369,11 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             for tit in ('name_orig', 'name_rom'):
                 if not mdata[tit] and mdata['name_eng']:
                     mdata[tit] = mdata['name_eng']
-            for author in mdata['author_of_manga']:
+            for i, author in enumerate(mdata['author_of_manga']):
                 if 'name_rus' not in author:
                     people = wa.search_people(author['name_rom'])
                     if people:
-                        author['name_rus'] = people['name_rus']
+                        mdata['author_of_manga'][i] = people
             mdata['notes'] = notes(mdata)
             mdata = not_none()
             res[M].append(mdata)
