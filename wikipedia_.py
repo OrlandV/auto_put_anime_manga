@@ -43,10 +43,12 @@ class Page:
         for li in ul:
             div = li.find_next("div", {'class': "mw-search-result-heading"})
             if search in div.a.text:
-                self.url = div.a.attrs['href'].removeprefix("/wiki/")
-            elif search in dn.normal_name(li.find_next("div", {'class': "searchresult"}).text):
-                self.url = li.a.attrs['href'].removeprefix("/wiki/")
+                self.url = div
+            elif (search in (sr := dn.normal_name(li.find_next("div", {'class': "searchresult"}).text))
+                  and (A in sr or M in sr)):
+                self.url = li
             if self.url:
+                self.url = self.url.a.attrs['href'].removeprefix("/wiki/")
                 self.html = page(self.url)
                 break
         else:
@@ -203,7 +205,7 @@ def manga_anime_in_page(pages: dict[str, BeautifulSoup | str]
                         else:
                             am = M if "Manga" in t else A
                     elif t in ("Feature films", "Films", "Live-action film", "Light novel", "Related series",
-                               "Related works", "Spin-offs", "Television series"):
+                               "Related works", "Spin-offs", "Television drama", "Television series"):
                         s = True
                         i += 1
                         continue
@@ -649,8 +651,18 @@ def studios(part: BeautifulSoup) -> list[str] | None:
             for li in ul.contents:
                 res.append(dn.decode_name(parentheses_remove(li.text)))
         else:
-            for t in td.text.split("\n"):
-                res.append(dn.decode_name(parentheses_remove(t)))
+            if td.br:
+                for el in td.contents:
+                    if isinstance(el, Tag) and el.name == "br":
+                        continue
+                    else:
+                        if isinstance(el, Tag) and el.name == "a":
+                            res.append(dn.decode_name(parentheses_remove(el.text)))
+                        else:
+                            res.append(dn.decode_name(parentheses_remove(el)))
+            else:
+                for t in td.text.split("\n"):
+                    res.append(dn.decode_name(parentheses_remove(t)))
         return res
 
 

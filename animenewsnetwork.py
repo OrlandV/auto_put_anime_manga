@@ -180,7 +180,7 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
         """
         Сверка года премьеры манги или anime из поискового ответа ANN (по ID) с заданным годом.
         :param _am: Переключатель anime/манга (False/True).
-        :return: True — год не соответствует; False — год соответствует.
+        :return: True — год соответствует; False — год не соответствует.
         """
         y = manga_date_of_premiere(page) if _am else anime_date_of_premiere(page)
         return int(y[:4]) == year if y else False
@@ -210,7 +210,7 @@ def search_pages(search: str, year: int | None = None, form: str | None = None
                         animes[id_] = page
             elif am == M and "novel" not in a.text and t.find(search_) == 0:
                 page = xml(id_)
-                if not val_year(True):
+                if val_year(True):
                     mangas[id_] = page
     return pages(animes, mangas)
 

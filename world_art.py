@@ -600,13 +600,13 @@ def extraction_manga(page: BeautifulSoup) -> dict[str, str | dict[int, dict[str,
         'poster': poster(page, True),
         'ann': ann_manga_id(page)
     }
-    if result['name_rus'] == result['name_rom']:
-        result['name_rus'] = ''
     if not result['name_eng'] and result['name_orig'] == result['name_rom']:
         result['name_eng'] = result['name_rom']
     elif not result['name_rus'] and result['name_eng'] and result['name_rom']:
         result['name_rus'] = result['name_rom']
         result['name_rom'] = result['name_eng']
+    if result['name_rus'] == result['name_rom']:
+        result['name_rus'] = ''
     print(result['name_rom'])
     return result
 
