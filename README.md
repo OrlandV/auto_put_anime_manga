@@ -6,8 +6,8 @@
 
 ---
 ![Static Badge](https://img.shields.io/badge/Python-3.12-%233776AB)
-![Static Badge](https://img.shields.io/badge/requests-2.32.5-black)
-![Static Badge](https://img.shields.io/badge/BeautifulSoup-4.14.3-black)
+![Static Badge](https://img.shields.io/badge/requests-2.34.2-black)
+![Static Badge](https://img.shields.io/badge/BeautifulSoup-4.15.0-black)
 ![Static Badge](https://img.shields.io/badge/python_dateutil-2.9.0-black)
 ![Static Badge](https://img.shields.io/badge/mysqlclient-2.2.7-black)
 ![Static Badge](https://img.shields.io/badge/Pillow-11.2.1-black)

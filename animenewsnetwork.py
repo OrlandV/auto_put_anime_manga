@@ -1,15 +1,17 @@
 """
 Поиск страниц в AnimeNewsNetwork (далее — ANN) и их обработка.
 """
+from time import sleep
+import requests
 import xml.etree.ElementTree as et
-from urllib.parse import quote
+# from urllib.parse import quote
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
 import dateutil.parser as date_parser
 from html import unescape
 
 from constants import *
-from file_cache import anti_bot, NewGenre
+from file_cache import NewGenre  # anti_bot
 import decode_name as dn
 from config import FORM_ANN, IGNORED_GENRES, GENRES_ANN, frequency
 
@@ -21,7 +23,13 @@ def xml(id_: int) -> et.Element | None:
     :return: XML-страница манги или anime в ANN.
     """
     print(f"ann.xml({id_})")
-    return et.fromstring(anti_bot("ANN", f"{CANNE}api.xml?title={id_}", "xml"))
+
+    # Анти-бот и/или блокировка ВКЛ
+    # return et.fromstring(anti_bot("ANN", f"{CANNE}api.xml?title={id_}", "xml"))
+
+    # Анти-бот и блокировка ВЫКЛ
+    sleep(1)
+    return et.fromstring(requests.get(f'{CANNE}api.xml', {'title': id_}).text)
 
 
 def html(page: str, params: dict, _php: bool = True) -> BeautifulSoup:
@@ -32,10 +40,16 @@ def html(page: str, params: dict, _php: bool = True) -> BeautifulSoup:
     :param _php: Флаг включения расширения «.php» в адрес.
     :return: Страница (HTML-код) в ANN.
     """
-    url = f"{SANNE}{page}{".php" if _php else ""}{"?" if len(params) else ""}"
-    for k, v in params.items():
-        url += f"{k}={quote(str(v))}&"
-    return BeautifulSoup(anti_bot("ANN", url[:-1]), "html.parser")
+    # Анти-бот и/или блокировка ВКЛ
+    # url = f"{SANNE}{page}{".php" if _php else ""}{"?" if len(params) else ""}"
+    # for k, v in params.items():
+    #     url += f"{k}={quote(str(v))}&"
+    # return BeautifulSoup(anti_bot("ANN", url[:-1]), "html.parser")
+
+    # Анти-бот и блокировка ВЫКЛ
+    sleep(1)
+    return BeautifulSoup(requests.get(SANNE + page + ("" if page == "search/name" else ".php"), params).text,
+                         "html.parser")
 
 
 def manga_date_of_premiere(ann_xml: et.Element) -> str | None:
@@ -110,7 +124,7 @@ def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element]
                     rm[aid] = id_
                 continue
             if (rel.attrib['rel'] in ("adaptation", "adapted from", "alternate retelling", "alternate retelling of",
-                                       "compilation of", "prequel", "sequel", "sequel of")
+                                      "compilation of", "prequel", "related", "sequel", "sequel of")
                     and id_ not in animes and id_ not in mangas and id_ not in mangas_ and id_ not in animes_):
                 xml_ = xml(id_)
                 if xml_.find("manga") is not None:
@@ -289,7 +303,7 @@ def publication(ann_xml: et.Element) -> dict[int, dict[str, str]] | None:
             return (a.text, int(a.attrs['href'].split("?id=")[1])) if f_id else a.text
 
     m_html = None
-    if (rels := ann_xml[0].findall("././related-prev[@rel='serialized in']")) is not None:
+    if (rels := ann_xml[0].findall("././related-prev[@rel='serialized in']")) is not None and len(rels):
         res = {}
         for rel in rels:
             id_ = int(rel.attrib['id'])

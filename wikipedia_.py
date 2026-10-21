@@ -14,10 +14,10 @@ import decode_name as dn
 def page(url: str) -> BeautifulSoup | None:
     """
     Получение HTML-кода страницы по внутренней ссылке в WP. Используется пакет requests.
-    :param url: Внутренняя ссылка (после /wiki/).
+    :param url: Внутренняя ссылка (достаточно части после /wiki/).
     :return: HTML-код страницы или None, если статус-код не входит в интервал [200, 400).
     """
-    res = BeautifulSoup(anti_bot("WP", WPES + url), "html.parser")
+    res = BeautifulSoup(anti_bot("WP", ("" if WPES in url else WPES) + url), "html.parser")
     return res if len(res) else None
 
 
@@ -39,23 +39,24 @@ class Page:
         self.html = None
         _html = BeautifulSoup(anti_bot("WP", WPE_SEARCH + search.replace(" ", "+")), "html.parser")
         # if not ((dsr := _html.find("div", {'class': "mw-search-results-info"})) and "does not exist" in dsr.text):
-        ul = _html.find("ul", {'class': "mw-search-results"}).contents
-        for li in ul:
-            div = li.find_next("div", {'class': "mw-search-result-heading"})
-            if search in div.a.text:
-                self.url = div
-            elif (search in (sr := dn.normal_name(li.find_next("div", {'class': "searchresult"}).text))
-                  and (A in sr or M in sr)):
-                self.url = li
-            if self.url:
-                self.url = self.url.a.attrs['href'].removeprefix("/wiki/")
-                self.html = page(self.url)
-                break
-        else:
-            url = search.replace(" ", "_")
-            self.html = page(url)
-            self.url = url
-        if not self.html.find("table", {'class': "infobox"}):
+        if _html.text:
+            ul = _html.find("ul", {'class': "mw-search-results"}).contents
+            for li in ul:
+                div = li.find_next("div", {'class': "mw-search-result-heading"})
+                if search in div.a.text:
+                    self.url = div
+                elif (search in (sr := dn.normal_name(li.find_next("div", {'class': "searchresult"}).text))
+                      and (A in sr or M in sr)):
+                    self.url = li
+                if self.url:
+                    self.url = self.url.a.attrs['href'].removeprefix("/wiki/")
+                    self.html = page(self.url)
+                    break
+            else:
+                url = search.replace(" ", "_")
+                self.html = page(url)
+                self.url = url
+        if not _html.text or not self.html.find("table", {'class': "infobox"}):
             self.html = None
             self.url = None
 
@@ -335,7 +336,7 @@ def authors(part: BeautifulSoup, *args) -> list[dict[str, str] | None]:
         :param _name: Ромадзи (английское) имя из страницы как есть.
         :return: Нормализованное ромадзи имя.
         """
-        _name = _name.split()
+        _name = _name.removeprefix(WPES).split()
         return dn.o_ou(dn.decode_name((_name[1] + " " if len(_name) > 1 else "") + _name[0])).lower().title()
 
     def orig_rom(_name: str) -> None:

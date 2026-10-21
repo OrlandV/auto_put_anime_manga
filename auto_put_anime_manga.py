@@ -148,7 +148,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
         for aut in _aut:
             for a in mdata['author_of_manga']:
                 if (aut['name_rom'] == a['name_rom']
-                        or ('name_orig' in aut and 'name_orig' in a
+                        or ('name_orig' in aut and aut['name_orig'] and 'name_orig' in a and a['name_orig']
                             and aut['name_orig'].replace(' ', '') == a['name_orig'].replace(' ', ''))):
                     return True
         return False
@@ -279,7 +279,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
             tit_v.update({'number_of_volumes': 1, 'number_of_chapters': 1})
         else:
             _res = adata
-            tit_v.update({'studio': [1]})  # Индекс значения «—<Нет информации>—».
+            tit_v.update({'studio': [1], 'duration': "00:00:01"})  # Индекс значения «—<Нет информации>—».
         for tit, v in tit_v.items():
             if not _res[tit]:
                 _res[tit] = v
