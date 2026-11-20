@@ -97,12 +97,13 @@ def anime_date_of_premiere(ann_xml: et.Element) -> str | None:
         return proc()
 
 
-def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element]
+def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element], rm: dict[int, int] = {}
           ) -> tuple[dict[int, et.Element], dict[int, et.Element], dict[int, int]]:
     """
     Поиск и получение XML-страниц манги и anime в ANN на базе уже полученных XML-страниц.
     :param animes: Словарь {ID: XML} уже полученных в search_pages anime.
     :param mangas: Словарь {ID: XML} уже полученных в search_pages манги.
+    :param rm: Словарь {ANN_ID anime: ANN_ID манги} адаптационных связей.
     :return: Кортеж: словарь {ID: XML} anime, словарь {ID: XML} манги,
         словарь {ID anime: ID манги} адаптационных связей.
     """
@@ -161,7 +162,7 @@ def pages(animes: dict[int, et.Element], mangas: dict[int, et.Element]
     print(f"ann.pages(animes, mangas)")
     animes_ = {}
     mangas_ = {}
-    rm = {}
+    # rm = {}
     for _aid, _anime in animes.items():
         animes_[_aid] = _anime
         apages(_anime, _aid)
@@ -282,7 +283,7 @@ def number_of_volumes(ann_xml: et.Element) -> int | None:
         return int(info.text)
 
 
-def publication(ann_xml: et.Element) -> dict[int, dict[str, str]] | None:
+def publications(ann_xml: et.Element) -> dict[int, dict[str, str]] | None:
     """
     Извлечение издания манги из XML-страницы в ANN.
     :param ann_xml: XML-страница в ANN.
@@ -412,7 +413,7 @@ def extraction_manga(
         'author_of_manga': authors(ann_xml, True),
         'number_of_volumes': number_of_volumes(ann_xml),
         'date_of_premiere': manga_date_of_premiere(ann_xml),
-        'publication': publication(ann_xml),
+        'publication': publications(ann_xml),
         'genre': genres(ann_xml),
         'poster': poster(ann_xml)
     }

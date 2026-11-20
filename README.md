@@ -9,13 +9,14 @@
 ![Static Badge](https://img.shields.io/badge/requests-2.34.2-black)
 ![Static Badge](https://img.shields.io/badge/BeautifulSoup-4.15.0-black)
 ![Static Badge](https://img.shields.io/badge/python_dateutil-2.9.0-black)
+![Static Badge](https://img.shields.io/badge/shikimori-api-1.0.1-black)
 ![Static Badge](https://img.shields.io/badge/mysqlclient-2.2.7-black)
 ![Static Badge](https://img.shields.io/badge/Pillow-11.2.1-black)
 
 ### Цели приложения
-* Автоматический поиск информации об anime и манге на веб-ресурсах (*requests*).
-* Автоматическое добавление найденной информации в базу данных (*mysqlclient*).
-* Изменение и сохранение постеров к anime и манге (*Pillow*).
+* Автоматический поиск информации об anime и манге на веб-ресурсах (_requests_, _shikimori-api_).
+* Автоматическое добавление найденной информации в базу данных (_mysqlclient_).
+* Изменение и сохранение постеров к anime и манге (_Pillow_).
 
 ### Задачи приложения (основной алгоритм работы)
 1. Ввод данных об искомых anime и манге.
@@ -23,6 +24,7 @@
     * На следующем этапе — чтение файлов `CSV` или `JSON`, либо запрос ввода пользователем.
 2. На основе вводных данных поиск и сбор страниц (данных) из следующих БД:
     * **World Art** (манга или anime отдельно),
+    * **Shikimori** (используя API),
     * **AnimeNewsNetwork** (используя XML API) (отдельно помечаются связи манги и anime),
     * **Wikipedia** (en) (используя библиотеку `BeautifulSoup`),
     * (_Временно выключено из-за недоступности ресурса._) **MangaUpdates** (используя JSON API).
@@ -35,14 +37,17 @@
     3.3. **World Art** → **AnimeNewsNetwork**. Ссылки из «World Art» в «AnimeNewsNetwork» (отдельно помечаются связи
         манги и anime).
 
-    3.4. **World Art** → **Wikipedia**. Ссылки из «World Art» в «Wikipedia».
+    3.4. **Shikimori** → **AnimeNewsNetwork**. Ссылки из «Shikimori» в «AnimeNewsNetwork» (отдельно помечаются связи
+        манги и anime).
 
-    3.5. **Wikipedia**. Выделение из страниц частей инфо-блоков, описывающих отдельную мангу или anime.
+    3.5. **World Art** → **Wikipedia**. Ссылки из «World Art» в «Wikipedia».
 
-    3.6. **Wikipedia**. Если к текущему шагу не нашлось страниц (или отфильтровались), производится повторный поиск, но
+    3.6. **Wikipedia**. Выделение из страниц частей инфо-блоков, описывающих отдельную мангу или anime.
+
+    3.7. **Wikipedia**. Если к текущему шагу не нашлось страниц (или отфильтровались), производится повторный поиск, но
         к искомому наименованию добавляется строка ` (manga)`.
 
-    3.7. (_Временно выключено._) **World Art** → **MangaUpdates**. Ссылки из «World Art» в «MangaUpdates».
+    3.8. (_Временно выключено._) **World Art** → **MangaUpdates**. Ссылки из «World Art» в «MangaUpdates».
 
 4. Извлечение интересующих данных из страниц.
 
@@ -50,16 +55,18 @@
 
     4.2. **World Art**. Anime (с указанием связанной манги).
 
-    4.3. **AnimeNewsNetwork**. Манга.
+    4.3. **Shikimori**. Anime.
 
-    4.4. **AnimeNewsNetwork**. Anime (с указанием связанной манги).
+    4.4. **AnimeNewsNetwork**. Манга.
 
-    4.5. **Wikipedia**.
+    4.5. **AnimeNewsNetwork**. Anime (с указанием связанной манги).
 
-    4.6. (_Временно выключено._) **MangaUpdates**.
+    4.6. **Wikipedia**.
+
+    4.7. (_Временно выключено._) **MangaUpdates**.
 
 5. Проверка наличия наименований **AnimeNewsNetwork** и **Wikipedia** в **World Art**:
-    поиск и добавление отсутствующих страниц. (Почти обратная процедура пунктам **3.3** и **3.4**, после чего новые
+    поиск и добавление отсутствующих страниц. (Почти обратная процедура пунктам **3.3** и **3.5**, после чего новые
     страницы проходят через **3.1** и **3.2**.)
 6. Извлечение данных из вновь найденных страниц в **World Art**. (Аналогично пунктам **4.1** и **4.2**.)
 7. Формирование единого словаря данных следующего формата:
@@ -96,8 +103,7 @@
                     …
                 ],
                 'notes': str,
-                'poster': str,
-                'ann_id': int
+                'poster': str
             },
             …
         ]
@@ -172,7 +178,7 @@
 ## Зависимости
 Установка зависимостей:
 ```bash
-pip install requests pillow python-dateutil beautifulsoup4 mysqlclient
+pip install requests python-dateutil beautifulsoup4 shikimori-api mysqlclient pillow
 ```
 
 ## Использование

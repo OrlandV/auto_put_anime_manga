@@ -40,23 +40,24 @@ class Page:
         _html = BeautifulSoup(anti_bot("WP", WPE_SEARCH + search.replace(" ", "+")), "html.parser")
         # if not ((dsr := _html.find("div", {'class': "mw-search-results-info"})) and "does not exist" in dsr.text):
         if _html.text:
-            ul = _html.find("ul", {'class': "mw-search-results"}).contents
-            for li in ul:
-                div = li.find_next("div", {'class': "mw-search-result-heading"})
-                if search in div.a.text:
-                    self.url = div
-                elif (search in (sr := dn.normal_name(li.find_next("div", {'class': "searchresult"}).text))
-                      and (A in sr or M in sr)):
-                    self.url = li
-                if self.url:
-                    self.url = self.url.a.attrs['href'].removeprefix("/wiki/")
-                    self.html = page(self.url)
-                    break
-            else:
-                url = search.replace(" ", "_")
-                self.html = page(url)
-                self.url = url
-        if not _html.text or not self.html.find("table", {'class': "infobox"}):
+            ul = _html.find("ul", {'class': "mw-search-results"})
+            if ul:
+                for li in ul.contents:
+                    div = li.find_next("div", {'class': "mw-search-result-heading"})
+                    if search in div.a.text:
+                        self.url = div
+                    elif (search in (sr := dn.normal_name(li.find_next("div", {'class': "searchresult"}).text))
+                          and (A in sr or M in sr)):
+                        self.url = li
+                    if self.url:
+                        self.url = self.url.a.attrs['href'].removeprefix("/wiki/")
+                        self.html = page(self.url)
+                        break
+                else:
+                    url = search.replace(" ", "_")
+                    self.html = page(url)
+                    self.url = url
+        if not _html.text or (self.html and not self.html.find("table", {'class': "infobox"})):
             self.html = None
             self.url = None
 
@@ -491,7 +492,7 @@ def date_of_premiere(part: BeautifulSoup) -> str | None:
     return date_parser.parse(date).strftime('%Y-%m-%d')
 
 
-def publication(part: BeautifulSoup) -> list[dict[str, str | int]]:
+def publications(part: BeautifulSoup) -> list[dict[str, str | int]]:
     """
     Извлечение наименований издательства и издания в WP.
     :param part: Часть страницы манги в WP (HTML-код).
@@ -567,7 +568,7 @@ def extraction_manga(part: dict[str, BeautifulSoup | dict[str, str]], tit: str
         'number_of_volumes': number_of_volumes(part['page_part']),
         'number_of_chapters': number_of_chapters(part['page_part']),
         'date_of_premiere': date_of_premiere(part['page_part']),
-        'publication': publication(part['page_part']),
+        'publication': publications(part['page_part']),
         'poster': poster(part['page_part'])
     }
     return result

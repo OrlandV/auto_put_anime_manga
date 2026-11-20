@@ -4,6 +4,7 @@
 Сокращения:
 ANN — AnimeNewsNetwork,
 MU — MangaUpdates,
+SH — Shikimori,
 WA — World Art,
 WP — Wikipedia (en).
 """
@@ -12,6 +13,7 @@ from bs4 import BeautifulSoup
 
 from input import *
 import world_art as wa
+import shikimori as sh
 import animenewsnetwork as ann
 import wikipedia_ as wp
 # import mangaupdates as mu
@@ -22,14 +24,15 @@ from Table import Table
 
 
 def ann_pages_in_wa(_ann_anime_pages: dict[int, Element], _ann_manga_pages: dict[int, Element],
-                    _wa_anime_pages: dict[int, BeautifulSoup] | None, _wa_manga_pages: dict[int, BeautifulSoup] | None
-                    ) -> tuple[dict[int, Element], dict[int, Element], dict[int, int]]:
+                    _wa_anime_pages: dict[int, BeautifulSoup] | None, _wa_manga_pages: dict[int, BeautifulSoup] | None,
+                    _ann_rm: dict[int, int]) -> tuple[dict[int, Element], dict[int, Element], dict[int, int]]:
     """
     Получение XML-страниц из ANN по ссылкам в страницах WA.
     :param _ann_anime_pages: Словарь {ANN_ID: XML} XML-страниц anime из ANN.
     :param _ann_manga_pages: Словарь {ANN_ID: XML} XML-страниц манги из ANN.
     :param _wa_anime_pages: Словарь {WA_ID: HTML} HTML-страниц anime из WA либо None.
     :param _wa_manga_pages: Словарь {WA_ID: HTML} HTML-страниц манги из WA либо None.
+    :param _ann_rm: Словарь {ANN_ID anime: ANN_ID манги} адаптационных связей.
     :return: Кортеж: словарь {ANN_ID: XML} XML-страниц anime из ANN, словарь {ANN_ID: XML} манги,
         словарь {ANN_ID anime: ANN_ID манги} адаптационных связей.
     """
@@ -43,7 +46,36 @@ def ann_pages_in_wa(_ann_anime_pages: dict[int, Element], _ann_manga_pages: dict
             id_ = wa.ann_manga_id(page)
             if id_ and id_ not in _ann_manga_pages:
                 _ann_manga_pages[id_] = ann.xml(id_)
-    return ann.pages(_ann_anime_pages, _ann_manga_pages)
+    return ann.pages(_ann_anime_pages, _ann_manga_pages, _ann_rm)
+
+
+def ann_pages_in_sh(_ann_anime_pages: dict[int, Element], _ann_manga_pages: dict[int, Element],
+                    _sh_anime_pages: dict[int, dict[str, str | int | dict[str, str] |
+                                                         list[str | dict[str, int | str] | None] | None]],
+                    _sh_manga_pages: dict[int, dict[str, str | int | dict[str, str] |
+                                                         list[str | dict[str, int | str] | None] | None] | None],
+                    _ann_rm: dict[int, int]) -> tuple[dict[int, Element], dict[int, Element], dict[int, int]]:
+    """
+    Получение XML-страниц из ANN по ссылкам в БД SH.
+    :param _ann_anime_pages: Словарь {ANN_ID: XML} XML-страниц anime из ANN.
+    :param _ann_manga_pages: Словарь {ANN_ID: XML} XML-страниц манги из ANN.
+    :param _sh_anime_pages: Список словарей данных по anime из БД SH.
+    :param _sh_manga_pages: Список словарей данных по манге из БД SH.
+    :param _ann_rm: Словарь {ANN_ID anime: ANN_ID манги} адаптационных связей.
+    :return: Кортеж: словарь {ANN_ID: XML} XML-страниц anime из ANN, словарь {ANN_ID: XML} манги,
+        словарь {ANN_ID anime: ANN_ID манги} адаптационных связей.
+    """
+    if _sh_anime_pages:
+        for anime in _sh_anime_pages.values():
+            id_ = sh.ann_anime_id(anime['id'])
+            if id_ and id_ not in _ann_anime_pages:
+                _ann_anime_pages[id_] = ann.xml(id_)
+    # if _sh_manga_pages:
+    #     for manga in _sh_manga_pages.values():
+    #         id_ = sh.ann_manga_id(manga['id'])
+    #         if id_ and id_ not in _ann_manga_pages:
+    #             _ann_manga_pages[id_] = ann.xml(id_)
+    return ann.pages(_ann_anime_pages, _ann_manga_pages, _ann_rm)
 
 
 def wp_pages_in_wa(search: str) -> dict[str, BeautifulSoup]:
@@ -213,6 +245,64 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
     #                 ids[M]['MU'].append(muid)
     #                 break
 
+    def aann(_annid: int | None) -> None:
+        """
+        Поиск соответствующего anime в словаре ANN и дополнение недостающими данными единого словаря данных по anime.
+        :param _annid: ID anime в ANN.
+        """
+        if ann_data and A in ann_data:
+            nonlocal adata, ids
+            for annid, anndata in ann_data[A].items():
+                q = qd = qid = False
+                if int(annid) == _annid:
+                    qid = True
+                if not qid and (((anndata['date_of_premiere'][5:] != "12-31"
+                                  and anndata['date_of_premiere'] == adata['date_of_premiere'])
+                                 or (anndata['date_of_premiere'][5:] == "12-31"
+                                     and anndata['date_of_premiere'][:4] == adata['date_of_premiere'][:4]))
+                                and ((anndata['name_rom'] and normal_name(anndata['name_rom'].replace("-", ""))
+                                .replace("ou", "o") == normal_name(adata['name_rom'].replace("-", ""))
+                                .replace("ou", "o"))
+                                     or (anndata['name_eng'] and adata['name_eng'] and normal_name(anndata['name_eng'])
+                                        .replace("ou", "o") == normal_name(adata['name_eng']).replace("ou", "o")))
+                                and maut(anndata['author_of_manga'])):
+                    qd = True
+                    for d in anndata['director']:
+                        for ad in adata['director']:
+                            qd = False
+                            if (d['name_rom'] == ad['name_rom']
+                                    or ('name_orig' in d and d['name_orig'].replace(' ', '') == ad['name_orig'])):
+                                q = True
+                                break
+                            q = False
+                if qid or q or qd:
+                    for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus',
+                                'number_of_episodes', 'date_of_premiere'):
+                        if not adata[tit] and anndata[tit]:
+                            adata[tit] = anndata[tit]
+                    if not len(adata['studio']) and 'studio' in anndata and len(anndata['studio']):
+                        adata['studio'] = anndata['studio']
+                    dd = []
+                    for d in anndata['director']:
+                        qd = True
+                        for ad in adata['director']:
+                            if (d['name_rom'] == ad['name_rom']
+                                    or ('name_orig' in d and d['name_orig'].replace(' ', '') == ad['name_orig'])):
+                                qd = False
+                                break
+                        if qd:
+                            dd.append(d)
+                    if ('director' not in adata or len(adata['director']) == 0) and len(dd) > 0:
+                        adata['director'] = dd
+                    if not adata[M] and M + '_id' in anndata:
+                        adata[M] = []
+                        for i in range(len(res[M])):
+                            if 'ann_id' in res[M][i] and int(res[M][i]['ann_id']) == anndata[M + '_id']:
+                                adata[M].append(i)
+                                break
+                    ids[A]['ANN'].append(annid)
+                    break
+
     def awp() -> None:
         """
         Поиск соответствующего anime в словаре WP и дополнение недостающими данными единого словаря данных по anime.
@@ -287,7 +377,7 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
 
     print("data_join()")
     res = {M: [], A: []}
-    ids = {M: {'ANN': [], 'WP': [], 'MU': []}, A: {'ANN': []}}
+    ids = {M: {'SH': [], 'ANN': [], 'WP': [], 'MU': []}, A: {'SH': [], 'ANN': []}}
 
     # manga
     if M in wa_data:
@@ -419,59 +509,40 @@ def data_join() -> dict[str, list[dict[str, str | list[dict[str, str]] | int | l
                     if 'wa_id' in res[M][i] and int(res[M][i]['wa_id']) == wadata[M + '_id']:
                         adata[M].append(i)
                         break
-            for annid, anndata in ann_data[A].items():
-                q = qd = qid = False
-                if int(annid) == wadata['ann']:
-                    qid = True
-                if not qid and (((anndata['date_of_premiere'][5:] != "12-31"
-                                  and anndata['date_of_premiere'] == adata['date_of_premiere'])
-                                 or (anndata['date_of_premiere'][5:] == "12-31"
-                                     and anndata['date_of_premiere'][:4] == adata['date_of_premiere'][:4]))
-                                and ((anndata['name_rom'] and normal_name(anndata['name_rom'].replace("-", ""))
-                                .replace("ou", "o") == normal_name(adata['name_rom'].replace("-", ""))
-                                .replace("ou", "o"))
-                                     or (anndata['name_eng'] and adata['name_eng'] and normal_name(anndata['name_eng'])
-                                        .replace("ou", "o") == normal_name(adata['name_eng']).replace("ou", "o")))
-                                and maut(anndata['author_of_manga'])):
-                    qd = True
-                    for d in anndata['director']:
-                        for ad in adata['director']:
-                            qd = False
-                            if (d['name_rom'] == ad['name_rom']
-                                    or ('name_orig' in d and d['name_orig'].replace(' ', '') == ad['name_orig'])):
-                                q = True
-                                break
-                            q = False
-                if qid or q or qd:
-                    for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus',
-                                'number_of_episodes', 'date_of_premiere'):
-                        if not adata[tit] and anndata[tit]:
-                            adata[tit] = anndata[tit]
-                    if not len(adata['studio']) and 'studio' in anndata and len(anndata['studio']):
-                        adata['studio'] = anndata['studio']
-                    dd = []
-                    for d in anndata['director']:
-                        qd = True
-                        for ad in adata['director']:
-                            if (d['name_rom'] == ad['name_rom']
-                                    or ('name_orig' in d and d['name_orig'].replace(' ', '') == ad['name_orig'])):
-                                qd = False
-                                break
-                        if qd:
-                            dd.append(d)
-                    if ('director' not in adata or len(adata['director']) == 0) and len(dd) > 0:
-                        adata['director'] = dd
-                    if not adata[M] and M + '_id' in anndata:
-                        adata[M] = []
-                        for i in range(len(res[M])):
-                            if 'ann_id' in res[M][i] and int(res[M][i]['ann_id']) == anndata[M + '_id']:
-                                adata[M].append(i)
-                                break
-                    ids[A]['ANN'].append(annid)
-                    break
+
+            # for shid, shdata in sh_data[A].items():
+
+            aann(wadata['ann'])
             awp()
             adata = not_none(False)
             res[A].append(adata)
+
+    if A in sh_data:
+        for shid, shdata in sh_data[A].items():
+            if shid in ids[A]['SH']:
+                continue
+            adata = {}
+            for tit in ('name_orig', 'name_rom', 'name_eng', 'name_rus', 'format', 'number_of_episodes', 'duration',
+                        'date_of_premiere'):
+                adata[tit] = shdata[tit] if tit in shdata and shdata[tit] else None
+            for tit in ('studio', 'director', 'genre'):
+                adata[tit] = shdata[tit] if tit in shdata and shdata[tit] is not None and len(shdata[tit]) else []
+            adata['notes'] = shdata['notes'] if 'notes' in shdata and shdata['notes'] else None
+            adata.update({'poster': shdata['poster'], M: None})
+            if M + '_id' in shdata:
+                adata[M] = []
+                i = 0
+                for mid in sh_data[M].keys():
+                    if int(mid) == shdata[M + '_id']:
+                        adata[M].append(i)
+                        break
+                    i += 1
+            aann(shdata['ann'])
+            awp()
+            adata = not_none(False)
+            res[A].append(adata)
+            ids[A]['SH'].append(shid)
+
     if A in ann_data:
         for annid, anndata in ann_data[A].items():
             if annid in ids[A]['ANN']:
@@ -559,6 +630,7 @@ def control(_data: dict[str, list[dict[str, str | list[dict[str, str]] | int | l
 
 if __name__ == '__main__':
     # Поиск и сбор страниц
+    # WA
     wa_anime_pages = wa.search_anime(title, year, form) if A_M == A else None
     wa_manga_pages = wa.search_manga(title, year) if A_M == M else None
     wa_rm = {}
@@ -567,18 +639,27 @@ if __name__ == '__main__':
     if wa_manga_pages and len(wa_manga_pages):
         wa_anime_pages = wa.anime_pages_from_manga(wa_anime_pages, wa_manga_pages)
 
+    # SH
+    sh_anime_pages = sh.search_anime(title, year, form)
+    sh_manga_pages = {0: None}  # Заглушка
+
+    # ANN
     print(f"ann.search_pages('{title}', {year}, '{form}')")
     ann_anime_pages, ann_manga_pages, ann_rm = ann.search_pages(title, year, form)
     print("ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages, wa_manga_pages)")
     ann_anime_pages, ann_manga_pages, ann_rm = ann_pages_in_wa(ann_anime_pages, ann_manga_pages, wa_anime_pages,
-                                                               wa_manga_pages)
+                                                               wa_manga_pages, ann_rm)
+    print("ann_pages_in_sh(ann_anime_pages, ann_manga_pages, sh_anime_pages, sh_manga_pages)")
+    ann_anime_pages, ann_manga_pages, ann_rm = ann_pages_in_sh(ann_anime_pages, ann_manga_pages,
+                                                               sh_anime_pages, sh_manga_pages, ann_rm)
 
-    # print("mu.search_pages(title, year) if A_M == M")
+    # MU
     # mu_pages = mu.search_pages(title, year) if A_M == M else None
     # if not mu_pages:
     #     print("mu.search_pages(title)")
     #     mu_pages = mu.search_pages(title)
 
+    # WP
     print(f"wp_pages_in_wa('{title}')")
     wp_pages = wp_pages_in_wa(title)
     wp_page_parts = wp.filter_page_parts(wp.manga_anime_in_page(wp_pages))
@@ -606,6 +687,10 @@ if __name__ == '__main__':
               "for id_, page in wa_anime_pages.items()}")
         wa_data[A] = {id_: wa.extraction_anime(page, wa_rm[id_] if id_ in wa_rm else None)
                       for id_, page in wa_anime_pages.items()}
+    sh_data = {}
+    if sh_anime_pages and len(sh_anime_pages):
+        print("{id_: sh.extraction_anime(anime) for id_, anime in sh_anime_pages.items()}")
+        sh_data[A] = {id_: sh.extraction_anime(anime) for id_, anime in sh_anime_pages.items()}
     ann_data = {}
     if ann_manga_pages and len(ann_manga_pages):
         print("{id_: ann.extraction_manga(id_, ann_xml) for id_, ann_xml in ann_manga_pages.items()}")

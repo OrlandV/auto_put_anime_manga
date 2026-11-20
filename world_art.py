@@ -11,6 +11,21 @@ from constants import *
 from config import COOKIES_WA, IGNORED_GENRES
 
 
+def report(search: str, am: bool = False, ok: bool = True) -> None:
+    """
+    Запись в report.csv строки с искомым наименованием или функцией, не получившей доступ к серверу.
+    :param search: Искомое наименование.
+    :param am: Переключатель: anime/манга (0/1 | False/True).
+    :param ok: Переключатель: ответ сервера положительный (True) / отрицательный (False).
+    """
+    with open("report.csv", "a", encoding="utf8") as file:
+        file.write(
+            f'{M if am else A},"{search}",' +
+            ('"Возможно искомое наименование отредактировано и теперь не совпадает."' if ok else
+             '"Нет доступа!"') + "\n"
+        )
+
+
 def html(id_: int, am: bool = False, url: str | None = None) -> BeautifulSoup | None:
     """
     Получение HTML-кода страницы в WA.
@@ -23,7 +38,11 @@ def html(id_: int, am: bool = False, url: str | None = None) -> BeautifulSoup | 
     if not url:
         url = WAAM if am else WAAA
     sleep(1)
-    result = requests.get(url, {'id': id_}, cookies=COOKIES_WA)
+    try:
+        result = requests.get(url, {'id': id_}, cookies=COOKIES_WA)
+    except requests.exceptions.ConnectTimeout:
+        report(f"wa.html({id_}, {am}, {url})", am, False)
+        return
     if result.ok:
         return BeautifulSoup(result.content, "html.parser")
 
@@ -38,9 +57,10 @@ def anime_pages(aid: int, pages: dict[int, BeautifulSoup] = {}, aids: set[int] |
     :return: Словарь страниц в WA.
     """
     print(f"wa.anime_pages({aid})")
-    page = html(aid)
-    f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size")
-                              and tag.attrs['size'] == "2" and "Информация о серии" in tag.text)
+    f = None
+    if page := html(aid):
+        f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size")
+                                  and tag.attrs['size'] == "2" and "Информация о серии" in tag.text)
     if not f:
         return {aid: page}
     if trs := f.find_next(
@@ -60,19 +80,6 @@ def anime_pages(aid: int, pages: dict[int, BeautifulSoup] = {}, aids: set[int] |
     return {aid: page}
 
 
-def report(search: str, am: bool = False) -> None:
-    """
-    Запись в report.csv строки с искомым наименованием.
-    :param search: Искомое наименование.
-    :param am: Переключатель: anime/манга (0/1 | False/True).
-    """
-    with open('report.csv', 'a', encoding='utf8') as file:
-        file.write(
-            f'{M if am else A},"{search}",'
-            '"Ошибка. Возможно искомое наименование отредактировано и теперь не совпадает."\n'
-        )
-
-
 def search_anime(search: str, year: int, form: str, pages: dict[int, BeautifulSoup] = {},
                  aids: set[int] | list[int] | tuple[int] = []) -> dict[int, BeautifulSoup] | None:
     """
@@ -86,9 +93,13 @@ def search_anime(search: str, year: int, form: str, pages: dict[int, BeautifulSo
     """
     print(f"wa.search_anime('{search}', {year}, '{form if form else ''}')")
     search_ = points_codes(search)
-    data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
-                        params={'public_search': search_, 'global_sector': AN}).content
-    data = BeautifulSoup(data, "html.parser")
+    try:
+        data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
+                            params={'public_search': search_, 'global_sector': AN})
+    except requests.exceptions.ConnectTimeout:
+        report(f"wa.search_anime('{search}', {year}, '{form if form else ''}')", ok=False)
+        return
+    data = BeautifulSoup(data.content, "html.parser")
     aid = 0
     if meta := data.find("meta", {'http-equiv': "Refresh"}):
         meta = meta.attrs['content']
@@ -159,7 +170,7 @@ def manga_pages(mid: int, year: int) -> dict[int, BeautifulSoup] | None:
     """
     print(f"- wa.manga_pages({mid})")
     page = html(mid, True)
-    if year == int(manga_date_of_premiere(page, False)):
+    if page and year == int(manga_date_of_premiere(page, False)):
         f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size")
                                   and tag.attrs['size'] == "2" and "Эта серия состоит из" in tag.text)
         if not f:
@@ -189,9 +200,13 @@ def search_manga(search: str, year: int, pages: dict[int, BeautifulSoup] = {},
     """
     print(f"wa.search_manga('{search}', {year})")
     search_ = points_codes(search)
-    data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
-                        params={'public_search': search_, 'global_sector': M}).content
-    data = BeautifulSoup(data, "html.parser")
+    try:
+        data = requests.get(WA + 'search.php', cookies=COOKIES_WA,
+                            params={'public_search': search_, 'global_sector': M})
+    except requests.exceptions.ConnectTimeout:
+        report(f"wa.search_anime('{search}', {year})", ok=False)
+        return
+    data = BeautifulSoup(data.content, "html.parser")
     mid = 0
     if meta := data.find("meta", {'http-equiv': "Refresh"}):
         meta = meta.attrs['content']
@@ -230,6 +245,8 @@ def manga_pages_from_anime(
         """
         nonlocal wa_manga_pages
         manga = html(mid, True)
+        if not manga:
+            return
         if not wa_manga_pages:
             wa_manga_pages = {}
         wa_manga_pages[mid] = manga
@@ -265,10 +282,11 @@ def related_anime(wa_anime_pages: dict[int, BeautifulSoup], aid: int) -> dict[in
     :param aid: ID anime в WA.
     :return: Обновлённый словарь страниц anime в WA.
     """
-    anime = html(aid)
-    wa_anime_pages[aid] = anime
-    f = anime.find(lambda tag: tag.name == "font" and tag.has_attr("size")
-                               and tag.attrs['size'] == "2" and "Информация о серии" in tag.text)
+    f = None
+    if anime := html(aid):
+        wa_anime_pages[aid] = anime
+        f = anime.find(lambda tag: tag.name == "font" and tag.has_attr("size")
+                                   and tag.attrs['size'] == "2" and "Информация о серии" in tag.text)
     if not f:
         return wa_anime_pages
     trs = f.find_next(
@@ -484,13 +502,15 @@ def title_eng(page: BeautifulSoup, am: bool = False) -> str | None:
         return td.next_sibling.next_sibling.text.replace(' - ', ' — ').replace('...', '…')
 
 
-def people(pid: int) -> dict[str, str]:
+def people(pid: int) -> dict[str, str] | None:
     """
     Извлечение имён персоны из страницы в WA.
     :param pid: ID персоны в WA.
     :return: Словарь имён персоны в WA.
     """
     page = html(pid, url=f"{WA}people.php")
+    if not page:
+        return
     f = page.find(lambda tag: tag.name == "font" and tag.has_attr("size") and tag.attrs['size'] == "5").text
     res = {'name_rus': f}
     f = page.find(lambda tag: tag.name == "td" and tag.has_attr("class") and tag.attrs['class'] == ["review"]
@@ -502,7 +522,7 @@ def people(pid: int) -> dict[str, str]:
     return res
 
 
-def authors(page: BeautifulSoup) -> dict[int, dict[str, str]]:
+def authors(page: BeautifulSoup) -> dict[int, dict[str, str] | None]:
     """
     Извлечение имён авторов из страницы в WA.
     :param page: Страница (HTML-код) в WA.
@@ -518,7 +538,7 @@ def authors(page: BeautifulSoup) -> dict[int, dict[str, str]]:
     return res
 
 
-def publication(page: BeautifulSoup) -> dict[int, dict[str, str]]:
+def publications(page: BeautifulSoup) -> dict[int, dict[str, str]]:
     """
     Извлечение изданий из страницы в WA.
     :param page: Страница (HTML-код) в WA.
@@ -531,6 +551,8 @@ def publication(page: BeautifulSoup) -> dict[int, dict[str, str]]:
         if isinstance(a, Tag) and a.has_attr("href"):
             id_ = int(a.attrs['href'].split("?id=")[1])
             page_ = html(id_, url=f"{WA}company.php")
+            if not page_:
+                continue
             c = page_.find(lambda tag: tag.name == "a" and tag.has_attr("href")
                                        and "company.php" in tag.attrs['href']).text
             if c == "Morning":
@@ -595,7 +617,7 @@ def extraction_manga(page: BeautifulSoup) -> dict[str, str | dict[int, dict[str,
         'name_rus': manga_title_r(title_rus, page),
         'author_of_manga': authors(page),
         'date_of_premiere': manga_date_of_premiere(page),
-        'publication': publication(page),
+        'publication': publications(page),
         'genre': genres(page),
         'poster': poster(page, True),
         'ann': ann_manga_id(page)
@@ -689,7 +711,7 @@ def studios(page: BeautifulSoup) -> list[str] | None:
             and (a := page.find(lambda tag: tag.name == "a" and "компании" in tag.text))):
         a = a.attrs['href'].split("?id=")
         page = html(int(a[1]), url=a[0])
-        if f := page.find(lambda tag: tag.name == "font" and "Производство:" in tag.text):
+        if page and (f := page.find(lambda tag: tag.name == "font" and "Производство:" in tag.text)):
             trs = f.parent.parent.parent.contents
             return [decode_name(trs[tr].a.text) for tr in range(len(trs)) if tr]
 
@@ -705,7 +727,7 @@ def directors(page: BeautifulSoup) -> list[dict[str, str]] | None:
             and (a := page.find(lambda tag: tag.name == "a" and "авторы" in tag.text))):
         a = a.attrs['href'].split("?id=")
         page = html(int(a[1]), url=a[0])
-        if f := page.find(lambda tag: tag.name == "font" and "Режиссер:" in tag.text):
+        if page and (f := page.find(lambda tag: tag.name == "font" and "Режиссер:" in tag.text)):
             trs = f.parent.parent.parent.contents
             res = []
             tr = 1
@@ -804,9 +826,13 @@ def search_people(name_rom: str) -> dict[str, str] | None:
     :param name_rom: Имя персоны на ромадзи или английском.
     :return: Словарь имён персоны либо None.
     """
-    page = requests.get(WA + 'search.php', cookies=COOKIES_WA,
-                        params={'public_search': name_rom, 'global_sector': "people"}).content
-    page = BeautifulSoup(page, "html.parser")
+    try:
+        page = requests.get(WA + 'search.php', cookies=COOKIES_WA,
+                            params={'public_search': name_rom, 'global_sector': "people"})
+    except requests.exceptions.ConnectTimeout:
+        report(f"wa.search_people('{name_rom}')", ok=False)
+        return
+    page = BeautifulSoup(page.content, "html.parser")
     if meta := page.find("meta", {'http-equiv': "Refresh"}):
         meta = meta.attrs['content']
         pid = int(meta[meta.find("?id=") + 4:])

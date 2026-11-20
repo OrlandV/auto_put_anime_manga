@@ -8,6 +8,24 @@ DB_CONNECT = ("localhost", "", "", "anime_manga")
 # Путь хранения микропостеров. Например: 'C:/LOCALHOST/anime_manga/microposter/'.
 PATH = ''
 
+# Shikimori-форматы anime в WA.
+FORM_WA_SH = {
+    'полнометражный фильм': 'movie',
+    'OVA': 'ova',
+    'ONA': 'ona',
+    'ТВ-спэшл': 'tv_special',
+    'ТВ': 'tv'
+}
+
+# WA-форматы anime в Shikimori.
+FORM_SH_WA = {
+    'movie': 'полнометражный фильм',
+    'ova': 'OVA',
+    'ona': 'ONA',
+    'tv_special': 'ТВ-спэшл',
+    'tv': 'ТВ'
+}
+
 # WA-форматы anime в ANN.
 FORM_ANN = {
     'movie': 'полнометражный фильм',
@@ -25,9 +43,36 @@ FORM_WP = {
 }
 
 # Игнорируемые жанры.
-IGNORED_GENRES = {'дзёсэй', 'история', 'сёдзё', 'сёнэн', 'сэйнэн', 'Action', 'Adult', 'Doujinshi', 'Gender Bender',
-                  'Harem', 'Historical', 'Josei', 'Mature', 'Seinen', 'Shoujo', 'Shoujo Ai', 'Shounen', 'Shounen Ai',
-                  'Yaoi', 'Yuri', 'Tournament'}
+IGNORED_GENRES = {'дзёсэй', 'история', 'сёдзё', 'сёнэн', 'сэйнэн', 'Action', 'Adult', 'Cars', 'Dementia', 'Demons',
+                  'Doujinshi', 'Game', 'Gender Bender', 'Gourmet', 'Harem', 'Historical', 'Josei', 'Kids', 'Mature',
+                  'Military', 'Music', 'Police', 'Samurai', 'Seinen', 'Shoujo', 'Shoujo Ai', 'Shounen', 'Shounen Ai',
+                  'Super Power', 'Tournament', 'Vampire', 'Work Life', 'Yaoi', 'Yuri'}
+
+# Жанры Shikimori.
+GENRES_SH = {
+    'Adventure': "приключения",
+    'Comedy': "комедия",
+    'Drama': "драма",
+    'Ecchi': "этти",
+    'Erotica': "эротика",
+    'Fantasy': "фэнтези",
+    'Hentai': "хентай",
+    'Horror': "ужасы",
+    'Magic': "магия",
+    'Martial Arts': "боевые искусства",
+    'Mecha': "меха",
+    'Mystery': "мистика",
+    'Parody': "пародия",
+    'Psychological': "психология",
+    'Romance': "романтика",
+    'School': "школа",
+    'Sci-Fi': "фантастика",
+    'Slice of Life': "повседневность",
+    # 'Space': "космос",
+    'Sports': "спорт",
+    'Supernatural': "сверхъестественное",
+    'Thriller': "триллер"
+}
 
 # Жанры AnimeNewsNetwork.
 GENRES_ANN = {

@@ -7,6 +7,8 @@ WAA = WA + AN + '/'
 WAAA = WAA + AN + '.php'
 WAAM = WAA + M + '.php'
 
+SH = "https://shikimori.io"
+
 ANN = 'animenewsnetwork.com/'
 _ANNE = f'{ANN}encyclopedia/'
 ANNE = f'http://www.{_ANNE}'
